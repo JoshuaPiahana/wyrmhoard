@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kete — household finance</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232c5f5a'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>k</text></svg>">
+</head>
+<body>
+
+<!--
+  Reskinning this page
+  ===================
+  The JavaScript never builds layout. It only does two things:
+
+    1. Fills any element carrying  data-bind="path.into.state"  with a value,
+       formatted by  data-format="money|money2|pct|weeks|date|int|text".
+    2. Renders lists into containers carrying  data-list="name".
+
+  So a replacement design — from Stitch or anywhere else — only needs to keep
+  those attributes on whatever markup it uses. No build step, no framework.
+-->
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark">k</span>
+    <span>kete <small data-bind="household.name">—</small></span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview"     aria-selected="true">Overview</button>
+    <button role="tab" data-tab="spending"     aria-selected="false">Spending</button>
+    <button role="tab" data-tab="actions"      aria-selected="false">What to do</button>
+    <button role="tab" data-tab="repeats"      aria-selected="false">Repeats</button>
+    <button role="tab" data-tab="entitlements" aria-selected="false">Entitlements</button>
+    <button role="tab" data-tab="progress"     aria-selected="false">Progress</button>
+    <button role="tab" data-tab="data"         aria-selected="false">Data</button>
+  </nav>
+</header>
+
+<main>
+
+  <div id="banners"></div>
+
+  <!-- ================= OVERVIEW ================= -->
+  <div class="panel" data-panel="overview">
+
+    <section>
+      <div class="hero">
+        <div class="num" data-bind="headline.number" data-format="text">—</div>
+        <div class="lbl" data-bind="headline.label">Loading…</div>
+        <div class="sub" data-bind="headline.sub"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="grid g4">
+        <div class="stat">
+          <div class="v" data-bind="summary.typical_month.income_median" data-format="money">—</div>
+          <div class="k">Comes in, typical month</div>
+        </div>
+        <div class="stat">
+          <div class="v" data-bind="summary.typical_month.spend_median" data-format="money">—</div>
+          <div class="k">Goes out, typical month</div>
+        </div>
+        <div class="stat">
+          <div class="v" data-bind="summary.cash.total" data-format="money">—</div>
+          <div class="k">Cash on hand</div>
+          <div class="sub"><span data-bind="summary.cash.runway_weeks" data-format="weeks">—</span> of essentials</div>
+        </div>
+        <div class="stat">
+          <div class="v" data-bind="mortgage.balance" data-format="money">—</div>
+          <div class="k">Mortgage remaining</div>
+          <div class="sub" data-bind="mortgageNote">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Where it goes</h2>
+        <span class="hint">A typical month, grouped by how much choice you have over it.</span>
+      </div>
+      <div class="card">
+        <div class="bar" data-list="groupbar"></div>
+        <div class="legend" data-list="grouplegend"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Month by month</h2>
+        <span class="hint">Green is money in, gold is money out. Faded columns are partial months.</span>
+      </div>
+      <div class="card">
+        <div class="chart" data-list="monthchart"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Worth doing first</h2></div>
+      <div data-list="topfindings"></div>
+      <button class="btn" data-goto="actions">See the full list →</button>
+    </section>
+
+  </div>
+
+  <!-- ================= SPENDING ================= -->
+  <div class="panel" data-panel="spending" hidden>
+    <section>
+      <div class="section-head">
+        <h2>Every category</h2>
+        <span class="hint">Median of recent complete months, annualised.</span>
+      </div>
+      <div class="card tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th><th>Group</th>
+              <th class="n">Per month</th><th class="n">Per year</th>
+              <th class="n">Share</th><th class="n">Count</th>
+            </tr>
+          </thead>
+          <tbody data-list="categories"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="grid g2">
+        <div class="card">
+          <h3>Small purchases</h3>
+          <div class="stat" style="border:0; padding:0">
+            <div class="v" data-bind="summary.small_leaks.per_year" data-format="money">—</div>
+            <div class="k">a year, in purchases under <span data-bind="summary.small_leaks.threshold" data-format="money">—</span></div>
+          </div>
+          <p class="muted" style="margin-top:12px">
+            <span data-bind="summary.small_leaks.count" data-format="int">—</span> purchases averaging
+            <span data-bind="summary.small_leaks.average_size" data-format="money2">—</span> each —
+            about <span data-bind="summary.small_leaks.per_week" data-format="money">—</span> a week.
+            No single one felt like a decision, which is the difficulty with them.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Essentials vs choices</h3>
+          <div class="stat" style="border:0; padding:0">
+            <div class="v" data-bind="summary.typical_month.discretionary_total" data-format="money">—</div>
+            <div class="k">a month you have direct control over</div>
+          </div>
+          <p class="muted" style="margin-top:12px">
+            Against <span data-bind="summary.typical_month.essentials_total" data-format="money">—</span>
+            of essentials and commitments. The second number is hard to move quickly;
+            the first is where a decision changes things fastest.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= ACTIONS ================= -->
+  <div class="panel" data-panel="actions" hidden>
+    <section>
+      <div class="section-head">
+        <h2>What's worth doing</h2>
+        <span class="hint">Ranked by what it's worth against how hard it is.</span>
+      </div>
+      <div data-list="findings"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>The order to do it in</h2>
+        <span class="hint">Sequence matters more than content.</span>
+      </div>
+      <div class="card"><ol class="plan" data-list="plan"></ol></div>
+    </section>
+
+    <section>
+      <div class="card">
+        <h3>Family meeting report</h3>
+        <p>
+          A printable report built for sitting round a table — one headline number,
+          what's working, what's worth doing, and a page for the kids.
+        </p>
+        <div class="row">
+          <button class="btn primary" id="btn-report">Build the report</button>
+          <a class="btn" id="link-report" href="/api/report/latest" target="_blank" hidden>Open latest →</a>
+          <span id="report-status" class="muted"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= REPEATS ================= -->
+  <div class="panel" data-panel="repeats" hidden>
+    <section>
+      <div class="grid g3">
+        <div class="stat">
+          <div class="v" data-bind="recurring.count" data-format="int">—</div>
+          <div class="k">regular payments detected</div>
+        </div>
+        <div class="stat">
+          <div class="v" data-bind="recurring.total_monthly" data-format="money">—</div>
+          <div class="k">a month, all commitments</div>
+        </div>
+        <div class="stat">
+          <div class="v" data-bind="recurring.subscriptions_annual" data-format="money">—</div>
+          <div class="k">a year on subscriptions alone</div>
+        </div>
+      </div>
+    </section>
+    <section>
+      <div class="section-head">
+        <h2>Everything that repeats</h2>
+        <span class="hint">Read it aloud once a year. Nobody decides these monthly, which is why they survive.</span>
+      </div>
+      <div class="card tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>What</th><th>Category</th><th>How often</th>
+              <th class="n">Each time</th><th class="n">Per year</th><th>Last seen</th>
+            </tr>
+          </thead>
+          <tbody data-list="recurring"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= ENTITLEMENTS ================= -->
+  <div class="panel" data-panel="entitlements" hidden>
+    <section>
+      <div id="ent-banner"></div>
+      <div class="grid g2">
+        <div class="stat">
+          <div class="v" data-bind="entitlements.estimate.received_annualised" data-format="money">—</div>
+          <div class="k">Actually received in the last year, from your bank data</div>
+        </div>
+        <div class="stat">
+          <div class="v" data-bind="entitlements.estimate.total_estimate_annual" data-format="money">—</div>
+          <div class="k">Rough estimate for a household of this shape</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="card">
+        <h3>How the estimate breaks down</h3>
+        <div class="tablewrap">
+          <table>
+            <tbody data-list="entbreakdown"></tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:14px" data-bind="entitlements.estimate.calculator_url" data-format="link"></p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Also worth checking</h2>
+        <span class="hint">These depend on things the tool can't see, so they're prompts rather than calculations.</span>
+      </div>
+      <div class="card tablewrap">
+        <table>
+          <thead><tr><th>Support</th><th>Who it's for</th><th></th></tr></thead>
+          <tbody data-list="checklist"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= PROGRESS ================= -->
+  <div class="panel" data-panel="progress" hidden>
+    <section>
+      <div class="section-head">
+        <h2>Snapshots</h2>
+        <span class="hint">Take one at the end of every family meeting — that's what makes progress measurable.</span>
+      </div>
+      <div class="card">
+        <div class="row">
+          <input type="text" id="snap-note" placeholder="What changed this month?" style="flex:1; min-width:220px">
+          <button class="btn primary" id="btn-snapshot">Take snapshot</button>
+        </div>
+      </div>
+    </section>
+    <section>
+      <div class="card tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th class="n">Left over</th><th class="n">Spending</th>
+              <th class="n">Cash</th><th class="n">Runway</th><th>Note</th>
+            </tr>
+          </thead>
+          <tbody data-list="snapshots"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= DATA ================= -->
+  <div class="panel" data-panel="data" hidden>
+    <section>
+      <div class="section-head">
+        <h2>Import bank exports</h2>
+        <span class="hint">Nothing is uploaded anywhere — it's parsed by the container on this machine.</span>
+      </div>
+      <div class="drop" id="drop">
+        <b>Drop Kiwibank CSV exports here</b><br>
+        <span class="muted">or click to choose files. Re-importing the same file is safe — duplicates are ignored.</span>
+        <input type="file" id="file" accept=".csv" multiple hidden>
+      </div>
+      <div id="import-result"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Fix the unknowns</h2>
+        <span class="hint">Biggest first — one decision here usually covers dozens of transactions.</span>
+      </div>
+      <div class="card tablewrap">
+        <table>
+          <thead><tr><th>Memo</th><th class="n">Count</th><th class="n">Total</th><th>Set category</th></tr></thead>
+          <tbody data-list="unknowns"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="card">
+        <h3>Housekeeping</h3>
+        <div class="row">
+          <button class="btn" id="btn-reload">Reload config &amp; recategorise</button>
+          <span class="muted">Run this after editing <code>config/rules.yml</code> or <code>household.yml</code>.</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

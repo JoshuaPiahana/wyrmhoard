@@ -1,0 +1,267 @@
+# ===========================================================================
+# rules.yml - how raw bank memos become categories.
+#
+# Matching is case-insensitive and happens twice, against two normalised forms
+# of the memo:
+#
+#   spaced   - punctuation replaced with spaces, whitespace collapsed
+#   squashed - everything except letters and digits removed
+#
+# The squashed pass is what makes one rule cover every way a bank spells a
+# merchant: "PAK N SAVE" squashes to PAKNSAVE, and so do "PAK'nSAVE",
+# "PAKnSAVE" and "Pak N Save". Only patterns of 6+ squashed characters use it,
+# because shorter ones start matching across word boundaries - "AMI" would
+# otherwise hit "CERAMIC".
+#
+# Prefix a pattern with "re:" to use a raw regex against the spaced form. Use
+# that for short or ambiguous tokens where you need \b word boundaries.
+#
+# First matching category wins, evaluated in `priority` order (low = first).
+# Correct a transaction in the UI and the tool appends the learned rule to
+# config/learned.yml so it never has to ask you twice.
+#
+# `group` drives the coaching maths and is the most important field here:
+#   essential      - keeps the family safe, warm, fed and employed
+#   commitment     - contractual, hard to change quickly (mortgage, insurance)
+#   sinking        - lumpy annual bills that should be saved for monthly
+#   discretionary  - genuinely choosable spending
+#   income / transfer / unknown
+# ===========================================================================
+version: 1
+
+categories:
+
+  # ---- Income --------------------------------------------------------------
+  income_salary:
+    label: "Salary and wages"
+    group: income
+    priority: 10
+    match: ["SALARY", "WAGES", "PAYROLL", "PAY RUN"]
+  income_ird:
+    label: "IRD / Working for Families"
+    group: income
+    priority: 10
+    note: "Tax credits and refunds. If this category is empty, check your entitlements."
+    match: ["INLAND REVENUE", "IRD", "WFFTC", "WORKING FOR FAM", "FAMILY TAX", "BEST START"]
+  income_msd:
+    label: "Work and Income (MSD)"
+    group: income
+    priority: 10
+    match: ["MSD", "WORK AND INCOME", "MINISTRY OF SOCIAL", "WINZ"]
+  income_other:
+    label: "Other income"
+    group: income
+    priority: 90
+    match: ["REFUND", "REIMBURSE", "REBATE", "DIVIDEND", "INTEREST EARNED"]
+
+  # ---- Commitments ---------------------------------------------------------
+  mortgage:
+    label: "Mortgage"
+    group: commitment
+    priority: 5
+    match: ["LOAN PAYMENT", "HOME LOAN", "MORTGAGE", "TABLE LOAN", "re:\\bLN ?\\d"]
+  insurance:
+    label: "Insurance"
+    group: commitment
+    priority: 20
+    match: ["AA INSURANCE", "STATE INSURANCE", "TOWER INS", "AMI", "VERO", "FMG",
+            "INITIO", "CIGNA", "PARTNERS LIFE", "ASTERON", "NIB NZ", "SOUTHERN CROSS",
+            "ACCURO", "INSURANCE", "ASSURANCE"]
+  rates:
+    label: "Council rates"
+    group: sinking
+    priority: 20
+    match: ["PALMERSTON NORTH CITY", "PNCC", "MANAWATU DISTRICT", "HORIZONS REGIONAL",
+            "CITY COUNCIL", "DISTRICT COUNCIL", "RATES"]
+  kiwisaver:
+    label: "KiwiSaver"
+    group: commitment
+    priority: 10
+    match: ["KIWISAVER", "KIWI SAVER", "SIMPLICITY", "MILFORD", "BOOSTER", "GENERATE",
+            "SUPERLIFE", "SMARTSHARES", "FISHER FUNDS"]
+  bank_fees:
+    label: "Bank fees and interest"
+    group: commitment
+    priority: 20
+    match: ["MONTHLY AC FEE", "ACCOUNT FEE", "SERVICE FEE", "OVERDRAWN", "DISHONOUR",
+            "DEFAULT FEE", "TRANSACTION FEE", "FOREIGN CURRENCY FEE", "OVERDRAFT"]
+
+  # ---- Essentials ----------------------------------------------------------
+  groceries:
+    label: "Groceries"
+    group: essential
+    priority: 20
+    match: ["COUNTDOWN", "WOOLWORTHS", "NEW WORLD", "PAK N SAVE", "PAKNSAVE",
+            "FRESHCHOICE", "SUPERVALUE", "NOSH", "FARRO", "BIN INN",
+            "HUCKLEBERRY", "GILMOURS", "TRENTS"]
+
+  convenience:
+    label: "Dairy and convenience"
+    group: discretionary
+    priority: 22
+    note: >
+      Split out from groceries on purpose. Topping up at the dairy or the
+      service station costs roughly twice supermarket prices, so this category
+      is usually the cheapest thing in the whole budget to change - and it
+      hides inside "groceries" if you let it.
+    match: ["DAIRY", "FOUR SQUARE", "SUPERETTE", "NIGHT N DAY", "ON THE SPOT",
+            "CONVENIENCE", "SERVICE STATION SHOP"]
+  power:
+    label: "Power and gas"
+    group: essential
+    priority: 20
+    match: ["MERCURY", "GENESIS ENERGY", "CONTACT ENERGY", "MERIDIAN", "ELECTRIC KIWI",
+            "FRANK ENERGY", "NOVA ENERGY", "PULSE ENERGY", "FLICK ELECTRIC", "POWERSHOP",
+            "TRUSTPOWER", "ECOTRICITY", "ROCKGAS", "ELGAS"]
+  telco:
+    label: "Phone and internet"
+    group: essential
+    priority: 20
+    match: ["SPARK", "VODAFONE", "ONE NZ", "2DEGREES", "SKINNY", "SLINGSHOT", "ORCON",
+            "MYREPUBLIC", "NOW NZ", "BIGPIPE", "VOYAGER", "CONTACT BROADBAND"]
+  fuel:
+    label: "Fuel"
+    group: essential
+    priority: 20
+    # Z stations appear as "Z <suburb>" on statements, e.g. "Z ASHHURST".
+    # The regex catches those without swallowing every memo starting with Z.
+    match: ["Z ENERGY", "BP CONNECT", "BP 2GO", "MOBIL", "CALTEX", "GULL", "WAITOMO",
+            "NPD", "ALLIED PETROL", "GAS STATION", "PETROL", "re:\\bBP\\b",
+            "re:^Z [A-Z]{3,}", "re:^Z \\d"]
+  vehicle:
+    label: "Vehicle and transport"
+    group: essential
+    priority: 25
+    match: ["NZTA", "WAKA KOTAHI", "VTNZ", "VINZ", "REGO", "REGISTRATION", "WARRANT",
+            "AUTOMOTIVE", "MECHANIC", "TYRE", "REPCO", "SUPERCHEAP", "AA MEMBER",
+            "PANEL BEAT", "CAR SERVIC"]
+  health:
+    label: "Health and medical"
+    group: essential
+    priority: 25
+    match: ["CHEMIST WAREHOUSE", "UNICHEM", "LIFE PHARMACY", "PHARMACY", "MEDICAL",
+            "DOCTOR", "HEALTH CENTRE", "DENTAL", "DENTIST", "PHYSIO", "OPTOMETRIST",
+            "SPECSAVERS", "OPSM", "RADIOLOGY", "AFTER HOURS"]
+  kids_education:
+    label: "Kids and school"
+    group: essential
+    priority: 25
+    match: ["SCHOOL", "KINDERGARTEN", "KINDY", "DAYCARE", "EARLY LEARNING", "PLAYCENTRE",
+            "PLUNKET", "EDUCATION", "SCHOOL LUNCH", "ASHHURST SCH"]
+  home_maintenance:
+    label: "Home and maintenance"
+    group: essential
+    priority: 30
+    match: ["MITRE 10", "BUNNINGS", "PLACEMAKERS", "ITM", "CARTERS", "HAMMER HARDWARE",
+            "PLUMB", "ELECTRICIAN", "GUTTER", "LAWN", "SKIP BIN"]
+
+  # ---- Sinking funds (lumpy, predictable, usually ambushes the budget) ------
+  christmas_gifts:
+    label: "Gifts and Christmas"
+    group: sinking
+    priority: 40
+    match: ["GIFT", "CHRISTMAS", "XMAS", "TOYWORLD", "TOY WORLD", "WHITCOULLS",
+            "PAPER PLUS"]
+
+  # ---- Discretionary -------------------------------------------------------
+  takeaways:
+    label: "Takeaways and delivery"
+    group: discretionary
+    priority: 15
+    match: ["MCDONALD", "KFC", "BURGER KING", "DOMINO", "PIZZA HUT", "SUBWAY", "WENDYS",
+            "CARLS JR", "HELL PIZZA", "UBER EATS", "UBEREATS", "DELIVEREASY", "MENULOG",
+            "DOORDASH", "FISH AND CHIP", "TAKEAWAY", "SUSHI", "KEBAB", "ST PIERRE"]
+  cafes:
+    label: "Cafes and coffee"
+    group: discretionary
+    priority: 15
+    match: ["STARBUCKS", "COLUMBUS COFFEE", "MUFFIN BREAK", "ESQUIRES", "ROBERT HARRIS",
+            "COFFEE CLUB", "CAFE", "COFFEE", "ESPRESSO", "BAKERY", "BAKERS DELIGHT"]
+  dining_out:
+    label: "Restaurants and bars"
+    group: discretionary
+    priority: 30
+    match: ["RESTAURANT", "BISTRO", "TAVERN", "GASTRO", "EATERY", "GRILL", "DINER"]
+  alcohol:
+    label: "Alcohol"
+    group: discretionary
+    priority: 25
+    match: ["LIQUORLAND", "SUPER LIQUOR", "THIRSTY LIQUOR", "BOTTLE O", "BIG BARREL",
+            "WEST LIQUOR", "BLACK BULL", "LIQUOR", "WINE", "BREWERY"]
+  subscriptions:
+    label: "Subscriptions and streaming"
+    group: discretionary
+    priority: 15
+    note: "Recurring by nature - the tool counts these and annualises them."
+    match: ["NETFLIX", "DISNEY", "SPOTIFY", "AMAZON PRIME", "PRIME VIDEO", "NEON",
+            "SKY TV", "SKY GO", "SKY NZ", "APPLE COM BILL", "APPLE COM", "ITUNES",
+            "GOOGLE", "YOUTUBE", "MICROSOFT", "XBOX", "PLAYSTATION", "NINTENDO",
+            "AUDIBLE", "PATREON", "TWITCH", "ADOBE", "DROPBOX", "CANVA", "OPENAI",
+            "ANTHROPIC", "STEAM", "CRUNCHYROLL"]
+  shopping_household:
+    label: "Household and general shopping"
+    group: discretionary
+    priority: 35
+    match: ["THE WAREHOUSE", "WAREHOUSE STATIONERY", "KMART", "BRISCOES", "FARMERS",
+            "NOEL LEEMING", "HARVEY NORMAN", "JB HI FI", "TEMU", "ALIEXPRESS",
+            "TRADE ME", "TRADEME", "AMAZON", "EBAY", "SHEIN", "TORPEDO7"]
+  clothing:
+    label: "Clothing and shoes"
+    group: discretionary
+    priority: 35
+    match: ["HALLENSTEIN", "GLASSONS", "COTTON ON", "POSTIE", "JAY JAYS",
+            "NUMBER ONE SHOES", "HANNAHS", "PLATYPUS", "REBEL SPORT", "BARKERS",
+            "MAX FASHION", "KATHMANDU", "MACPAC"]
+  entertainment:
+    label: "Entertainment and outings"
+    group: discretionary
+    priority: 35
+    match: ["EVENT CINEMA", "READING CINEMA", "HOYTS", "CINEMA", "TENPIN", "BOWLING",
+            "MINI GOLF", "TICKETEK", "ITICKET", "EVENTFINDA", "LIDO", "SWIM"]
+  personal_care:
+    label: "Personal care"
+    group: discretionary
+    priority: 35
+    match: ["BARBER", "SALON", "BEAUTY", "NAILS", "MASSAGE", "SNAP FITNESS",
+            "ANYTIME FITNESS", "CITY FITNESS", "LES MILLS", "HAIRDRESS"]
+  pets:
+    label: "Pets"
+    group: discretionary
+    priority: 35
+    match: ["ANIMATES", "PETSTOCK", "VETERINARY", "SPCA", "re:\\bVET\\b", "re:\\bPET\\b"]
+  hobbies:
+    label: "Hobbies and sport"
+    group: discretionary
+    priority: 40
+    match: ["HUNTING AND FISHING", "HOBBY", "SPORTS CLUB", "RUGBY", "NETBALL",
+            "FOOTBALL CLUB", "CRICKET", "DANCE", "MUSIC LESSON"]
+
+  # ---- Flagged: worth an honest family conversation ------------------------
+  gambling:
+    label: "Lotto and gambling"
+    group: discretionary
+    priority: 5
+    flag: true
+    match: ["LOTTO", "MYLOTTO", "SKYCITY", "CASINO", "POKIE", "re:\\bTAB\\b"]
+  tobacco_vape:
+    label: "Tobacco and vaping"
+    group: discretionary
+    priority: 5
+    flag: true
+    match: ["TOBACC", "VAPE", "SHOSHA", "VAPO", "CIGARETTE"]
+
+  # ---- Bank mechanics ------------------------------------------------------
+  transfer:
+    label: "Internal transfer"
+    group: transfer
+    priority: 1
+    note: "Excluded from spending and income totals so money moving between your own accounts never looks like either."
+    match: ["TRANSFER TO", "TRANSFER FROM", "TFR TO", "TFR FROM", "INTERNET TRANSFER",
+            "OWN ACCOUNT", "SWEEP", "ONLINE TRANSFER"]
+
+# Anything unmatched lands in `uncategorised`. The tool reports what share of
+# spend that is - if it is over 10%, the numbers are not yet trustworthy and
+# the dashboard says so rather than quietly drawing a confident chart.
+uncategorised:
+  label: "Uncategorised"
+  group: unknown

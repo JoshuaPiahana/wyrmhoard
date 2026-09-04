@@ -1,0 +1,237 @@
+"""
+Turning bank memos into categories.
+
+Bank memos are hostile input: "POS W/D PAK'nSAVE PALM STH 4829", "D/D
+MERCURY NZ LTD", "AP TO 38-9014-0..". They are inconsistently punctuated,
+truncated at odd lengths, and full of reference numbers.
+
+So we normalise aggressively before matching - strip punctuation, collapse
+whitespace, uppercase - which lets one rule ("PAK N SAVE") catch every
+spelling the bank might emit. The cost is that rules cannot rely on
+punctuation; the benefit is that the ruleset stays short enough to maintain.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any
+
+from . import config, db
+
+_PUNCT_RE = re.compile(r"[^A-Z0-9 ]+")
+_WS_RE = re.compile(r"\s+")
+_SQUASH_RE = re.compile(r"[^A-Z0-9]+")
+
+# Below this length, a squashed pattern starts matching across word
+# boundaries - "AMI" would hit "CERAMIC", "PET" would hit "CARPET". Short
+# patterns stay on the spaced form only, where word gaps still protect them.
+_MIN_SQUASH_LEN = 6
+
+# Reference numbers and card fragments carry no signal and cause false
+# matches (a memo ending "...VET 2024" should not match a regex for VET).
+_NOISE_RE = re.compile(
+    r"\b(POS W D|POS WD|EFTPOS|VISA PURCHASE|DEBIT CARD|CARD \d+|"
+    r"D D|A P|AP TO|DIRECT DEBIT|AUTOMATIC PAYMENT|BILL PAYMENT|"
+    r"PAYMENT TO|PAYMENT FROM|REF \w+|\d{6,})\b"
+)
+
+
+def normalise(text: str) -> str:
+    up = (text or "").upper()
+    up = _PUNCT_RE.sub(" ", up)
+    up = _WS_RE.sub(" ", up).strip()
+    return up
+
+
+def strip_noise(text: str) -> str:
+    """Normalised text with bank plumbing removed - used for display too."""
+    cleaned = _NOISE_RE.sub(" ", normalise(text))
+    return _WS_RE.sub(" ", cleaned).strip()
+
+
+def squash(text: str) -> str:
+    """
+    Everything but letters and digits removed.
+
+    Needed because stripping punctuation to spaces does not make spellings
+    agree: "PAK'nSAVE" becomes "PAK NSAVE", which matches neither the rule
+    "PAK N SAVE" nor "PAKNSAVE". Squashing both sides makes all three spellings
+    the same string.
+    """
+    return _SQUASH_RE.sub("", (text or "").upper())
+
+
+@dataclass(frozen=True)
+class Rule:
+    key: str
+    label: str
+    group: str
+    priority: int
+    flag: bool
+    literals: tuple[str, ...]
+    squashed: tuple[str, ...]
+    regexes: tuple[re.Pattern[str], ...]
+
+    def matches(self, haystack: str, squashed_haystack: str) -> bool:
+        for lit in self.literals:
+            if lit in haystack:
+                return True
+        for lit in self.squashed:
+            if lit in squashed_haystack:
+                return True
+        for rx in self.regexes:
+            if rx.search(haystack):
+                return True
+        return False
+
+
+@lru_cache(maxsize=1)
+def compiled_rules() -> list[Rule]:
+    raw = config.rules()
+    out: list[Rule] = []
+    for key, cat in (raw.get("categories") or {}).items():
+        literals: list[str] = []
+        regexes: list[re.Pattern[str]] = []
+        for pattern in cat.get("match", []) or []:
+            if isinstance(pattern, str) and pattern.startswith("re:"):
+                try:
+                    regexes.append(re.compile(pattern[3:], re.IGNORECASE))
+                except re.error:
+                    continue
+            else:
+                literals.append(normalise(str(pattern)))
+        clean = tuple(p for p in literals if p)
+        out.append(
+            Rule(
+                key=key,
+                label=cat.get("label", key),
+                group=cat.get("group", "unknown"),
+                priority=int(cat.get("priority", 50)),
+                flag=bool(cat.get("flag", False)),
+                literals=clean,
+                squashed=tuple(
+                    s for s in (squash(p) for p in clean) if len(s) >= _MIN_SQUASH_LEN
+                ),
+                regexes=tuple(regexes),
+            )
+        )
+    out.sort(key=lambda r: (r.priority, r.key))
+    return out
+
+
+def rule_index() -> dict[str, Rule]:
+    return {r.key: r for r in compiled_rules()}
+
+
+def categorise_one(memo: str, amount: float = 0.0) -> tuple[str, str, str]:
+    """Returns (category_key, group, decided_by)."""
+    haystack = strip_noise(memo)
+    squashed_haystack = squash(haystack)
+    for rule in compiled_rules():
+        if rule.matches(haystack, squashed_haystack):
+            group = rule.group
+            # A rule can be right about the merchant but wrong about direction:
+            # a refund from a shop is income, not spending.
+            if group in {"essential", "discretionary", "sinking", "commitment"} and amount > 0:
+                group = "income"
+            return rule.key, group, "rule"
+    return "uncategorised", "unknown", "unmatched"
+
+
+def recategorise_all() -> dict[str, Any]:
+    """
+    Re-run categorisation across the whole ledger.
+
+    Safe to run any time: manual overrides always win, so a human correction
+    is never lost to a later rule change.
+    """
+    config.reload()
+    compiled_rules.cache_clear()
+
+    overrides = db.overrides()
+    idx = rule_index()
+    updates: list[tuple[str, str, str, str]] = []
+
+    for tx in db.all_transactions():
+        fp = tx["fingerprint"]
+        if fp in overrides:
+            key = overrides[fp]
+            rule = idx.get(key)
+            group = rule.group if rule else "unknown"
+            if group in {"essential", "discretionary", "sinking", "commitment"} and tx["amount"] > 0:
+                group = "income"
+            updates.append((key, group, "manual", fp))
+            continue
+        key, group, by = categorise_one(tx["memo"], tx["amount"])
+        updates.append((key, group, by, fp))
+
+    with db.connect() as conn:
+        conn.executemany(
+            "UPDATE transactions SET category=?, grp=?, categorised_by=? WHERE fingerprint=?",
+            updates,
+        )
+
+    return coverage()
+
+
+def coverage() -> dict[str, Any]:
+    """
+    How much of the household's spending we actually understand.
+
+    This gates the rest of the tool. Below ~90% coverage the category charts
+    are decorative rather than informative, and the dashboard says so.
+    """
+    with db.connect() as conn:
+        total_out = conn.execute(
+            "SELECT COALESCE(SUM(ABS(amount)),0) FROM transactions "
+            "WHERE amount < 0 AND grp != 'transfer'"
+        ).fetchone()[0]
+        unknown_out = conn.execute(
+            "SELECT COALESCE(SUM(ABS(amount)),0) FROM transactions "
+            "WHERE amount < 0 AND (grp = 'unknown' OR category = 'uncategorised')"
+        ).fetchone()[0]
+        n_unknown = conn.execute(
+            "SELECT COUNT(*) FROM transactions "
+            "WHERE grp = 'unknown' OR category = 'uncategorised'"
+        ).fetchone()[0]
+        n_total = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+
+    pct = 100.0 * (1 - (unknown_out / total_out)) if total_out else 0.0
+    return {
+        "categorised_pct": round(pct, 1),
+        "uncategorised_spend": round(unknown_out, 2),
+        "total_spend": round(total_out, 2),
+        "uncategorised_count": n_unknown,
+        "transaction_count": n_total,
+        "trustworthy": pct >= 90.0,
+    }
+
+
+def top_uncategorised(limit: int = 25) -> list[dict[str, Any]]:
+    """
+    The fastest path to good coverage: fix the biggest unknowns first.
+
+    Grouped by cleaned memo so one decision can cover thirty transactions.
+    """
+    rows = [
+        tx
+        for tx in db.all_transactions()
+        if (tx.get("category") in (None, "uncategorised") or tx.get("grp") == "unknown")
+        and tx["amount"] < 0
+    ]
+    buckets: dict[str, dict[str, Any]] = {}
+    for tx in rows:
+        key = strip_noise(tx["memo"])[:40] or "(blank)"
+        b = buckets.setdefault(
+            key, {"memo": key, "count": 0, "total": 0.0, "example": tx["memo"],
+                  "fingerprints": []}
+        )
+        b["count"] += 1
+        b["total"] += abs(tx["amount"])
+        b["fingerprints"].append(tx["fingerprint"])
+    out = sorted(buckets.values(), key=lambda b: b["total"], reverse=True)[:limit]
+    for b in out:
+        b["total"] = round(b["total"], 2)
+    return out

@@ -1,0 +1,133 @@
+# ===========================================================================
+# nz_rates.yml - New Zealand entitlement and tax constants.
+#
+# READ THIS BEFORE TRUSTING ANY DOLLAR FIGURE THE TOOL PRODUCES FROM IT.
+#
+# These rates change every 1 April, and they were seeded from a language
+# model's training data, NOT from a live feed. Every block below carries
+# `verified: false` until a human has checked it against the official source
+# in the same block. While `verified` is false, the tool labels every derived
+# number an ESTIMATE and links you to the official calculator instead of
+# telling you what you are owed.
+#
+# That distinction matters: an over-confident "you are owed $12,000" that
+# turns out to be wrong is worse than no number at all.
+#
+# TO VERIFY: open the `source` URL, check each number, then set
+# `verified: true` and update `checked_on`. Takes about ten minutes and it is
+# the highest-value ten minutes in this whole project.
+# ===========================================================================
+version: 1
+
+meta:
+  seeded_by: "LLM training data - treat as unverified"
+  tax_year: "2026/27"          # NZ tax year runs 1 April to 31 March
+  needs_human_verification: true
+
+working_for_families:
+  verified: false
+  checked_on: null
+  source: "https://www.ird.govt.nz/working-for-families"
+  calculator: "https://www.ird.govt.nz/working-for-families/payment-types/estimate-your-payments"
+  effective_from: "2025-04-01"
+  note: >
+    Family Tax Credit is paid per child. In-Work Tax Credit requires the
+    household to be in paid work and NOT receiving a main benefit. Both abate
+    together once family income passes the threshold below.
+  family_tax_credit_weekly:
+    eldest_child: 144.00
+    subsequent_child: 117.00
+  in_work_tax_credit_weekly:
+    base_up_to_three_children: 97.50
+    each_additional_child: 15.00
+  abatement:
+    threshold_annual: 44900
+    rate_pct: 27.0
+  minimum_family_tax_credit:
+    annual_after_tax_income_floor: 35316
+
+best_start:
+  verified: false
+  checked_on: null
+  source: "https://www.ird.govt.nz/working-for-families/payment-types/best-start-tax-credit"
+  effective_from: "2025-04-01"
+  note: >
+    Year 0 (under 1) is universal - paid regardless of household income.
+    Years 1 and 2 are income-tested and abate against family income.
+  weekly_rate: 73.00
+  universal_until_age: 1
+  abatement:
+    threshold_annual: 79000
+    rate_pct: 21.0
+
+kiwisaver:
+  verified: false
+  checked_on: null
+  source: "https://www.ird.govt.nz/kiwisaver"
+  note: >
+    The government contribution is the highest-guaranteed return available to
+    a NZ household, but it is only worth chasing once the family is not going
+    backwards each month. The tool sequences it accordingly.
+  government_contribution:
+    max_annual: 260.72
+    match_rate: 0.25
+    member_contribution_for_max: 1042.86
+    contribution_year: "1 July to 30 June"
+    note: "Halved in Budget 2025 from the long-standing $521.43 - VERIFY, this is exactly the kind of figure that changed recently."
+  minimum_employee_pct: 3
+  minimum_employer_pct: 3
+  hardship_withdrawal_possible: true
+
+rates_rebate:
+  verified: false
+  checked_on: null
+  source: "https://www.govt.nz/browse/housing-and-property/getting-help-with-housing/rates-rebates/"
+  administered_by: "Your local council - for Ashhurst that is Palmerston North City Council"
+  note: >
+    Income-tested rebate on council rates for homeowners. The income threshold
+    rises with each dependant, which matters a great deal with three children.
+    Applications usually close 30 June for the rates year.
+  max_rebate: 790
+  income_threshold: 31510
+  additional_per_dependant: 500
+
+paye:
+  verified: false
+  checked_on: null
+  source: "https://www.ird.govt.nz/income-tax/income-tax-for-individuals/tax-codes-and-tax-rates-for-individuals"
+  note: "Used only to sanity-check payslip deductions, never to file anything."
+  brackets:
+    - { up_to: 15600,  rate_pct: 10.5 }
+    - { up_to: 53500,  rate_pct: 17.5 }
+    - { up_to: 78100,  rate_pct: 30.0 }
+    - { up_to: 180000, rate_pct: 33.0 }
+    - { up_to: null,   rate_pct: 39.0 }
+  acc_earners_levy_pct: 1.67
+  acc_levy_income_cap: 152790
+
+other_support_to_check:
+  # Not modelled numerically - surfaced as prompts in the coaching report,
+  # because eligibility depends on circumstances the tool cannot see.
+  verified: false
+  items:
+    - name: "Accommodation Supplement"
+      applies_to: "Homeowners can qualify, not just renters - commonly missed."
+      source: "https://www.workandincome.govt.nz/products/a-z-benefits/accommodation-supplement.html"
+    - name: "Disability Allowance"
+      applies_to: "Ongoing costs from a health condition, incl. prescriptions and travel to appointments."
+      source: "https://www.workandincome.govt.nz/products/a-z-benefits/disability-allowance.html"
+    - name: "Childcare Subsidy / OSCAR"
+      applies_to: "Pre-schoolers and before/after-school care for school-age children."
+      source: "https://www.workandincome.govt.nz/products/a-z-benefits/childcare-subsidy.html"
+    - name: "20 Hours ECE"
+      applies_to: "Children aged 3 to 5 at a licensed service."
+      source: "https://parents.education.govt.nz/early-learning/early-childhood-education/20-hours-ece/"
+    - name: "Community Services Card"
+      applies_to: "Cuts doctor visit and prescription costs for the whole family."
+      source: "https://www.workandincome.govt.nz/products/a-z-benefits/community-services-card.html"
+    - name: "School donations / stationery support"
+      applies_to: "Many schools opt into the donations scheme; ask the office directly."
+      source: null
+    - name: "Unclaimed money"
+      applies_to: "IRD holds unclaimed money from old accounts - free to search."
+      source: "https://www.ird.govt.nz/unclaimed-money"

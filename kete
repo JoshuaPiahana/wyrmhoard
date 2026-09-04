@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# kete - thin wrapper so the monthly routine is two short commands rather than
+# two long ones. Run from WSL:  ./kete ingest
+#
+# No `make` dependency on purpose; Ubuntu images do not always ship it, and a
+# routine that fails on a missing tool is a routine that gets abandoned.
+# ---------------------------------------------------------------------------
+set -euo pipefail
+cd "$(dirname "$0")"
+
+run() { docker compose run --rm --no-deps api python -m kete.cli "$@"; }
+
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker daemon is not running. Start it with:  sudo service docker start" >&2
+  exit 1
+fi
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  up)       docker compose up -d && echo "Dashboard: http://localhost:8080" ;;
+  down)     docker compose down ;;
+  restart)  docker compose restart ;;
+  logs)     docker compose logs -f api ;;
+  build)    docker compose build ;;
+  test)     docker compose run --rm --no-deps api python -m pytest tests/ -q "$@" ;;
+  shell)    docker compose run --rm --no-deps api bash ;;
+
+  # Everything else is a CLI subcommand.
+  ingest|sample|summary|review|recategorise|report|snapshot|loan|init|reset)
+            run "$cmd" "$@" ;;
+
+  help|--help|-h)
+    cat <<'USAGE'
+kete - household finance
+
+  ./kete up                 start the dashboard at http://localhost:8080
+  ./kete down               stop everything
+  ./kete logs               tail the API logs
+
+  ./kete sample             generate synthetic data to try it out
+  ./kete ingest             import every CSV in data/inbox/
+  ./kete ingest --sample    import the synthetic sample
+  ./kete review             biggest uncategorised spending
+  ./kete recategorise       re-apply rules after editing config/rules.yml
+  ./kete summary            headline numbers in the terminal
+  ./kete report             build the family meeting report
+  ./kete snapshot           freeze this month's numbers for progress tracking
+  ./kete loan               mortgage payoff scenarios
+
+  ./kete test               run the test suite
+  ./kete build              rebuild the image after changing requirements.txt
+
+The monthly routine is:   ./kete ingest && ./kete report
+USAGE
+    ;;
+  *) echo "Unknown command: $cmd. Try ./kete help" >&2; exit 1 ;;
+esac

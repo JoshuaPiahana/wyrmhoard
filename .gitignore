@@ -1,0 +1,61 @@
+# ---------------------------------------------------------------------------
+# FINANCIAL DATA — NEVER COMMIT
+# Everything under data/ is real household data except the synthetic samples.
+# ---------------------------------------------------------------------------
+data/*
+!data/samples/
+!data/.gitkeep
+data/samples/*.real.*
+
+# Raw source documents dropped anywhere.
+# No exceptions, not even for the synthetic sample - it is regenerable with
+# `./kete sample`, and a rule with exceptions is a rule that eventually lets
+# the wrong file through.
+*.ofx
+*.qif
+*.csv
+
+# Payslips / statements / anything scanned
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.heic
+!docs/**/*.png
+
+# The household's own filled-in config (the .example.yml IS committed)
+config/household.yml
+config/overrides.yml
+
+# Generated reports contain real numbers
+reports/
+out/
+*.report.html
+
+# Secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Node / frontend build
+node_modules/
+web/dist/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.swp

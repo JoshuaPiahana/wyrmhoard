@@ -1,0 +1,97 @@
+# ===========================================================================
+# household.yml — the one file that makes this tool *yours*.
+# Copy to config/household.yml (gitignored) and fill in.
+# Nothing here leaves your machine.
+# ===========================================================================
+
+household:
+  name: "Our Whānau"
+  # Used only to set the local tax year, public holidays and entitlement rules.
+  country: NZ
+  # Ashhurst sits inside Palmerston North City Council for rates purposes.
+  council: "Palmerston North City Council"
+
+people:
+  - name: "You"
+    role: earner            # earner | partner | child
+    birth_year: 1992
+  - name: "Partner"
+    role: partner
+    birth_year: 1995
+  - name: "Child 1"
+    role: child
+    birth_year: 2017
+  - name: "Child 2"
+    role: child
+    birth_year: 2019
+  - name: "Child 3"
+    role: child
+    birth_year: 2024
+
+income:
+  # One PAYE job is the plan-able income. Anything irregular goes in `upside`
+  # so it never props up the budget — it only ever accelerates a goal.
+  primary:
+    label: "Full-time PAYE"
+    gross_annual: null       # fill from payslip, or leave null to derive from bank credits
+    pay_cycle: fortnightly   # weekly | fortnightly | monthly
+    kiwisaver_employee_pct: 3
+    kiwisaver_employer_pct: 3
+    has_student_loan: false
+  upside:
+    - label: "Weekend work (~1 weekend/month, not guaranteed)"
+      treat_as: windfall     # windfall income is never budgeted, only allocated
+
+accounts:
+  # `kind` drives the net-worth maths. Add every account you hold.
+  - label: "Everyday"
+    kind: transaction
+    bank: kiwibank
+  - label: "Savings"
+    kind: savings
+    bank: kiwibank
+    opening_balance: 2000
+  - label: "Mortgage"
+    kind: mortgage
+    bank: kiwibank
+
+mortgage:
+  balance: 170000
+  property: "Our home"
+  # Fill these in from your Kiwibank loan summary — they drive the payoff maths.
+  interest_rate_pct: null
+  fixed_until: null          # YYYY-MM-DD
+  repayment: null            # per payment
+  repayment_frequency: fortnightly
+  term_remaining_years: null
+
+goals:
+  # Order matters — this is the ladder the coach walks you up.
+  - id: starter_buffer
+    label: "Starter buffer — one month of essentials"
+    kind: cash
+    target: null             # null = auto-calculated from your real essential spend
+    status: active
+  - id: sinking_funds
+    label: "Sinking funds for the lumpy bills (rates, rego, insurance, Christmas)"
+    kind: cash
+    target: null
+    status: pending
+  - id: emergency_fund
+    label: "Emergency fund — three months of essentials"
+    kind: cash
+    target: null
+    status: pending
+  - id: mortgage_free
+    label: "Mortgage free"
+    kind: debt
+    target: 0
+    status: pending
+
+settings:
+  currency: NZD
+  # Spending under this amount is tracked as "small leaks" — the death-by-a-
+  # thousand-cuts number that budgets usually miss.
+  small_transaction_threshold: 20
+  # A category is "discretionary" unless listed as essential in rules.yml.
+  family_meeting_day: "first Sunday"

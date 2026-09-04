@@ -1,0 +1,36 @@
+# Everything runs in containers. Nothing in this stack talks to the internet -
+# no telemetry, no cloud sync, no API keys. Your bank data stays on this disk.
+services:
+
+  api:
+    build: ./api
+    container_name: kete-api
+    ports:
+      - "127.0.0.1:8000:8000"     # loopback only - not exposed to your LAN
+    volumes:
+      - ./api/kete:/app/kete      # live reload while developing
+      - ./api/tests:/app/tests
+      - ./config:/config
+      - ./data:/data
+      - ./reports:/reports
+    environment:
+      KETE_CONFIG_DIR: /config
+      KETE_DATA_DIR: /data
+      KETE_REPORT_DIR: /reports
+      # Without this the container runs UTC and every report is dated a day
+      # behind - NZ is 12-13 hours ahead, so "today" is almost always wrong.
+      TZ: Pacific/Auckland
+    command: uvicorn kete.api:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: kete-web
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./web/src:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+    restart: unless-stopped

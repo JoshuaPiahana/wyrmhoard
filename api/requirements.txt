@@ -1,0 +1,18 @@
+# Deliberately small. Every dependency here is one more thing that can rot in
+# three years, and this tool needs to still run in three years.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+pandas==2.2.3
+PyYAML==6.0.2
+Jinja2==3.1.5
+python-dateutil==2.9.0.post0
+pdfplumber==0.11.5
+typer==0.15.1
+rich==13.9.4
+
+# Kept in the runtime image on purpose. The test suite guards the parsing and
+# sign-handling logic, and a suite you need a second image to run is a suite
+# that stops being run.
+pytest==8.3.4
