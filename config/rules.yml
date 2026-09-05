@@ -79,6 +79,32 @@ categories:
     priority: 10
     match: ["KIWISAVER", "KIWI SAVER", "SIMPLICITY", "MILFORD", "BOOSTER", "GENERATE",
             "SUPERLIFE", "SMARTSHARES", "FISHER FUNDS"]
+  bnpl:
+    label: "Buy now, pay later"
+    group: commitment
+    priority: 6
+    flag: true
+    note: >
+      Afterpay, Laybuy, Zip and friends. Flagged because these are genuine
+      debt obligations that do not look like debt on a statement - they arrive
+      as a series of small, unremarkable payments, which is exactly how a
+      household can be using them without feeling that they are.
+    match: ["AFTERPAY", "LAYBUY", "ZIP CO", "ZIPPAY", "GENOAPAY", "KLARNA",
+            "OXIPAY", "PARTPAY", "HUMM"]
+
+  loan_interest:
+    label: "Loan interest"
+    group: commitment
+    priority: 8
+    note: >
+      Interest charged on a mortgage or loan, which banks post as its own
+      transaction separate from the repayment. Worth its own category rather
+      than lumping it with bank fees: it is usually one of the largest single
+      lines in a household's year, and seeing it stated is what makes an extra
+      repayment feel worth making.
+    match: ["LOAN INTEREST", "INTEREST CHARGED", "MORTGAGE INTEREST",
+            "INTEREST CHARGE", "DEBIT INTEREST"]
+
   bank_fees:
     label: "Bank fees and interest"
     group: commitment
@@ -91,7 +117,9 @@ categories:
     label: "Groceries"
     group: essential
     priority: 20
-    match: ["COUNTDOWN", "WOOLWORTHS", "NEW WORLD", "PAK N SAVE", "PAKNSAVE",
+    # WWNZ is how Woolworths NZ online orders appear on a statement - easy to
+    # miss, and it can be a household's single largest grocery line.
+    match: ["COUNTDOWN", "WOOLWORTHS", "WWNZ", "NEW WORLD", "PAK N SAVE", "PAKNSAVE",
             "FRESHCHOICE", "SUPERVALUE", "NOSH", "FARRO", "BIN INN",
             "HUCKLEBERRY", "GILMOURS", "TRENTS"]
 
@@ -126,22 +154,26 @@ categories:
     # Z stations appear as "Z <suburb>" on statements, e.g. "Z ASHHURST".
     # The regex catches those without swallowing every memo starting with Z.
     match: ["Z ENERGY", "BP CONNECT", "BP 2GO", "MOBIL", "CALTEX", "GULL", "WAITOMO",
-            "NPD", "ALLIED PETROL", "GAS STATION", "PETROL", "re:\\bBP\\b",
-            "re:^Z [A-Z]{3,}", "re:^Z \\d"]
+            "NPD", "ALLIED PETROL", "GAS STATION", "PETROL", "FUELSTOP", "FUEL STOP",
+            "APL FUEL", "MCFALL FUEL", "RD PETROLEUM", "GASOLINE ALLEY",
+            "re:\\bBP\\b", "re:^Z [A-Z]{3,}", "re:^Z \\d", "re:^GAS [A-Z]{3,}"]
   vehicle:
     label: "Vehicle and transport"
     group: essential
     priority: 25
-    match: ["NZTA", "WAKA KOTAHI", "VTNZ", "VINZ", "REGO", "REGISTRATION", "WARRANT",
-            "AUTOMOTIVE", "MECHANIC", "TYRE", "REPCO", "SUPERCHEAP", "AA MEMBER",
-            "PANEL BEAT", "CAR SERVIC"]
+    match: ["NZTA", "NZ TRANSPORT AGENCY", "WAKA KOTAHI", "VTNZ", "VINZ", "REGO",
+            "REGISTRATION", "WARRANT", "AUTOMOTIVE", "MECHANIC", "TYRE", "REPCO",
+            "SUPERCHEAP", "AA MEMBER", "AA INSURANCE", "PANEL BEAT", "CAR SERVIC",
+            # AA branches appear as "AA <town>" on statements.
+            "re:^AA [A-Z]{3,}"]
   health:
     label: "Health and medical"
     group: essential
     priority: 25
     match: ["CHEMIST WAREHOUSE", "UNICHEM", "LIFE PHARMACY", "PHARMACY", "MEDICAL",
             "DOCTOR", "HEALTH CENTRE", "DENTAL", "DENTIST", "PHYSIO", "OPTOMETRIST",
-            "SPECSAVERS", "OPSM", "RADIOLOGY", "AFTER HOURS"]
+            "SPECSAVERS", "OPSM", "RADIOLOGY", "AFTER HOURS", "HEALTHPOST",
+            "HEALTH 2000", "GREEN CROSS"]
   kids_education:
     label: "Kids and school"
     group: essential
@@ -249,6 +281,19 @@ categories:
     priority: 5
     flag: true
     match: ["TOBACC", "VAPE", "SHOSHA", "VAPO", "CIGARETTE"]
+
+  person_payment:
+    label: "Payments to people"
+    group: unknown
+    priority: 60
+    note: >
+      Money sent to a named person rather than a business - a piano teacher, a
+      tradesperson, a friend being paid back. No rule can ever guess what these
+      are for, so they are surfaced deliberately for a human to categorise
+      once, after which the learned rule handles them forever. Grouped as
+      `unknown` on purpose: counting them as spending of a made-up category
+      would be a guess dressed up as a fact.
+    match: ["re:^PAY [A-Z]", "re:^PAYMENT TO [A-Z]"]
 
   # ---- Bank mechanics ------------------------------------------------------
   transfer:

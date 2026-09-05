@@ -22,6 +22,18 @@ services:
       TZ: Pacific/Auckland
     command: uvicorn wyrmhoard.api:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
+    # Lets the browser tests wait for readiness properly instead of sleeping
+    # and hoping. Uses the interpreter already in the image - no curl needed.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health")
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   web:
     image: nginx:1.27-alpine
@@ -60,7 +72,10 @@ services:
     environment:
       WYRMHOARD_E2E_URL: http://web
     depends_on:
-      - web
+      web:
+        condition: service_started
+      api:
+        condition: service_healthy
     command: >
       bash -c "pip install --quiet --root-user-action=ignore -r requirements.txt
       && pytest -q --browser chromium"

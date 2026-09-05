@@ -25,7 +25,9 @@ case "$cmd" in
   restart)  docker compose restart ;;
   logs)     docker compose logs -f api ;;
   build)    docker compose build ;;
-  test)     docker compose run --rm --no-deps api python -m pytest tests/ -q "$@" ;;
+  # The repo root is mounted at /repo so tests that assert on project files
+  # (the e2e isolation guard, for one) can find them here as well as in CI.
+  test)     docker compose run --rm --no-deps -v "$PWD:/repo" api python -m pytest tests/ -q "$@" ;;
   lint)
     # Both linters always run, even if the first fails - seeing every problem
     # at once beats fixing Python, re-running, and only then learning the JS
@@ -45,7 +47,16 @@ case "$cmd" in
     exit "$rc"
     ;;
   fmt)      docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo api sh -c "ruff check --fix . ; ruff format ." ;;
-  e2e)      docker compose up -d web && docker compose run --rm e2e "$@" ;;
+  e2e)
+    # Its own project name, its own throwaway data volumes, no host ports.
+    # The tests must never be able to reach the household's real ledger.
+    E2E="docker compose -p wyrmhoard-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
+    trap '$E2E down -v >/dev/null 2>&1' EXIT
+    $E2E up -d --build api web
+    $E2E run --rm --no-deps api python -m wyrmhoard.cli sample
+    $E2E run --rm --no-deps api python -m wyrmhoard.cli ingest --sample
+    $E2E run --rm e2e "$@"
+    ;;
   check)    "$0" lint && "$0" test && "$0" e2e ;;
   shell)    docker compose run --rm --no-deps api bash ;;
 

@@ -271,13 +271,64 @@ def small_leaks(df: pd.DataFrame | None = None, months: int = 6) -> dict[str, An
     }
 
 
+def latest_balances(df: pd.DataFrame | None = None) -> dict[str, float]:
+    """The most recent running balance the export gave us, per account."""
+    df = frame() if df is None else df
+    out: dict[str, float] = {}
+    if df.empty or not df["balance"].notna().any():
+        return out
+    withbal = df[df["balance"].notna()].sort_values("date")
+    for account, chunk in withbal.groupby("account"):
+        out[account] = round(float(chunk.iloc[-1]["balance"]), 2)
+    return out
+
+
+def debt_position() -> dict[str, Any]:
+    """What the household owes, from accounts identified as liabilities."""
+    from .. import accounts as accounts_mod
+
+    balances = latest_balances()
+    liabilities = accounts_mod.liability_accounts()
+    owing = {a: b for a, b in balances.items() if a in liabilities}
+    return {
+        "total": round(sum(abs(b) for b in owing.values()), 2) if owing else 0.0,
+        "by_account": {a: round(abs(b), 2) for a, b in owing.items()},
+        "accounts": sorted(owing),
+    }
+
+
+def net_worth() -> dict[str, Any]:
+    """
+    Cash minus debt.
+
+    Reported separately from cash because they answer different questions:
+    cash is "could we survive next month", net worth is "are we getting
+    anywhere". A household can be going backwards on one and forwards on the
+    other, and conflating them hides exactly that.
+    """
+    cash = cash_position()
+    debt = debt_position()
+    if cash.get("total") is None:
+        return {"available": False, "reason": "No balances in the imported data yet."}
+    return {
+        "available": True,
+        "assets": cash["total"],
+        "liabilities": debt["total"],
+        "net_worth": round(cash["total"] - debt["total"], 2),
+    }
+
+
 def cash_position() -> dict[str, Any]:
     """
     Cash on hand, and how long it would last.
 
-    Prefers the latest running balance from the bank export. Falls back to the
-    household's declared opening balance when balances are not in the export.
+    Counts ASSET accounts only. Summing every balance in the export puts the
+    mortgage in with the savings and reports a household's cash as a large
+    negative number - which was the single most wrong figure this tool has
+    produced. Loans are real, but they are debt, not spendable cash.
     """
+    from .. import accounts as accounts_mod
+
     df = frame()
     hh = config.household()
 
@@ -287,13 +338,12 @@ def cash_position() -> dict[str, Any]:
             declared = float(acct["opening_balance"])
             break
 
-    latest_balances: dict[str, float] = {}
-    if not df.empty and df["balance"].notna().any():
-        withbal = df[df["balance"].notna()].sort_values("date")
-        for account, chunk in withbal.groupby("account"):
-            latest_balances[account] = round(float(chunk.iloc[-1]["balance"]), 2)
+    all_balances = latest_balances(df)
+    assets = accounts_mod.asset_accounts()
+    latest_balances_filtered = {a: b for a, b in all_balances.items() if a in assets}
+    excluded = sorted(set(all_balances) - set(latest_balances_filtered))
 
-    total = sum(latest_balances.values()) if latest_balances else declared
+    total = sum(latest_balances_filtered.values()) if latest_balances_filtered else declared
     typ = typical_month(df)
     essentials = typ.get("essentials_total") if typ.get("available") else None
 
@@ -303,8 +353,11 @@ def cash_position() -> dict[str, Any]:
 
     return {
         "total": round(total, 2) if total is not None else None,
-        "source": "bank export" if latest_balances else "household.yml (declared)",
-        "by_account": latest_balances,
+        "source": "bank export" if latest_balances_filtered else "household.yml (declared)",
+        "by_account": latest_balances_filtered,
+        # Named explicitly so nobody wonders why the total is smaller than the
+        # sum of the accounts they can see in the export.
+        "excluded_accounts": excluded,
         "monthly_essentials": essentials,
         "runway_weeks": weeks,
         "as_at": df["date"].max().date().isoformat() if not df.empty else None,
@@ -378,6 +431,8 @@ def summary() -> dict[str, Any]:
         "by_category": by_category(df),
         "small_leaks": small_leaks(df),
         "cash": cash_position(),
+        "debt": debt_position(),
+        "net_worth": net_worth(),
         "trend": trend(),
         "generated_at": date.today().isoformat(),
     }

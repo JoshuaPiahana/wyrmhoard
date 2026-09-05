@@ -245,6 +245,58 @@ const RENDER = {
       </tr>`).join('');
   },
 
+  accounts: el => {
+    const rows = state.accounts || [];
+    if (!rows.length) {
+      el.innerHTML = '<tr><td colspan="5" class="muted">No accounts yet — import a bank export.</td></tr>';
+      return;
+    }
+    const ROLES = [
+      ['everyday', 'Everyday spending'],
+      ['savings', 'Savings / sinking fund'],
+      ['liability', 'Loan or mortgage'],
+      ['ignore', 'Ignore this account'],
+    ];
+    el.innerHTML = rows.map((a, i) => {
+      const opts = ROLES.map(([v, lbl]) =>
+        `<option value="${v}"${a.role === v ? ' selected' : ''}>${esc(lbl)}</option>`).join('');
+      const tag = a.confidence === 'confirmed'
+        ? '<span class="tag good">confirmed</span>'
+        : `<span class="tag">${esc(a.confidence || 'guess')}</span>`;
+      return `<tr>
+          <td>${esc(a.account)} ${tag}</td>
+          <td class="n">${a.transactions ?? '—'}</td>
+          <td class="n">${a.last_balance === null || a.last_balance === undefined ? '—' : money(a.last_balance)}</td>
+          <td class="muted">${esc(a.evidence || '')}</td>
+          <td><select data-role="${i}">${opts}</select></td>
+        </tr>`;
+    }).join('');
+
+    $$('select[data-role]', el).forEach(sel => {
+      sel.addEventListener('change', async ev => {
+        // Everything read from the element happens BEFORE the first await.
+        // After it, refresh() has rebuilt this table and any node captured
+        // here is detached — the same trap as reading currentTarget late.
+        const el = ev.currentTarget;
+        const account = rows[Number(el.dataset.role)].account;
+        const role = el.value;
+        el.disabled = true;
+        try {
+          await api('/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account, role }),
+          });
+        } finally {
+          // Re-render either way: on success it shows the new role, on failure
+          // it snaps back to what is actually stored rather than leaving an
+          // unsaved choice on screen looking saved.
+          await refresh();
+        }
+      });
+    });
+  },
+
   unknowns: el => {
     const rows = state.unknowns || [];
     if (!rows.length) {
@@ -355,14 +407,15 @@ function renderBanners() {
 
 async function refresh() {
   const [setup, summary, coach, recurring, entitlements, mortgage,
-         snapshots, unknowns, rules] = await Promise.all([
+         snapshots, unknowns, rules, accounts] = await Promise.all([
     api('/setup'), api('/summary'), api('/coach'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
-    api('/uncategorised?limit=25'), api('/rules'),
+    api('/uncategorised?limit=25'), api('/rules'), api('/accounts'),
   ]);
 
   Object.assign(state, {
     setup, summary, coach, recurring, entitlements, mortgage, snapshots, unknowns,
+    accounts,
     household: { name: setup.household_name },
     headline: null,
   });
@@ -370,6 +423,12 @@ async function refresh() {
   state.mortgageNote = mortgage.available
     ? `clears ${String(mortgage.base.payoff_date).slice(0, 4)} on current payments`
     : 'add rate + repayment to household.yml';
+  // Net worth here counts money, not property. Saying so matters: a family
+  // seeing a large negative number should know the house is not in it.
+  const debtAccounts = (summary.debt && summary.debt.accounts) || [];
+  state.netWorthNote = debtAccounts.length
+    ? ` across ${debtAccounts.length} loan${debtAccounts.length > 1 ? 's' : ''} · excludes property value`
+    : '';
   RULES = rules;
 
   applyBindings();

@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import __version__, cache, categorise, config, db
+from . import __version__, accounts, cache, categorise, config, db
 from . import coach as coach_mod
 from .analysis import cashflow, entitlements, mortgage, recurring
 from .ingest import ingest_file, parse_csv
@@ -171,6 +171,38 @@ def household() -> dict[str, Any]:
         "currency": hh.currency,
         "configured": (config.CONFIG_DIR / "household.yml").exists(),
     }
+
+
+# --------------------------------------------------------------------------
+# Accounts
+# --------------------------------------------------------------------------
+@app.get("/accounts")
+def list_accounts() -> list[dict[str, Any]]:
+    """
+    Every account, with its role and the evidence behind it.
+
+    The evidence is returned so the dashboard can show *why* an account was
+    called a loan, rather than asking somebody to trust a label.
+    """
+    return sorted(accounts.roles().values(), key=lambda a: str(a.get("account")))
+
+
+class AccountRoleRequest(BaseModel):
+    account: str
+    role: str
+    label: str | None = None
+
+
+@app.post("/accounts")
+def confirm_account_role(req: AccountRoleRequest) -> dict[str, Any]:
+    """Confirm or correct an account's role. A human decision always wins."""
+    if req.role not in accounts.ROLES:
+        raise HTTPException(400, f"role must be one of {', '.join(accounts.ROLES)}")
+    db.set_account_role(req.account, req.role, req.label, confirmed=True)
+    cache.clear_all()
+    # Roles change what counts as a transfer, so the ledger needs re-reading.
+    categorise.recategorise_all()
+    return {"ok": True, "accounts": list_accounts()}
 
 
 # --------------------------------------------------------------------------

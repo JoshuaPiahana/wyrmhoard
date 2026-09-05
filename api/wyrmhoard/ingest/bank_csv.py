@@ -46,7 +46,21 @@ HEADER_HINTS: dict[str, tuple[str, ...]] = {
     "debit": ("amount (debit)", "debit", "withdrawal", "money out", "dr"),
     "balance": ("balance", "running balance", "closing balance"),
     "account": ("account number", "account", "acct"),
+    # The other side of the transaction. When this is one of the household's
+    # own accounts it proves the row is an internal transfer - a far stronger
+    # signal than looking for the word "transfer" in free text.
+    "counterparty": ("other party account number", "other party account"),
+    # Extra descriptive columns. Banks scatter the useful words across
+    # several of these: a payment can say nothing in Description and name the
+    # payee in Particulars. They are joined into `match_text` for rule
+    # matching while `memo` stays the single human-readable field.
+    "particulars": ("particulars",),
+    "reference": ("reference",),
+    "other_party": ("other party name",),
 }
+
+# Columns whose text joins `memo` to form the string rules match against.
+_MATCH_TEXT_FIELDS = ("memo", "particulars", "reference", "other_party")
 
 DATE_FORMATS = (
     "%d-%m-%Y",
@@ -151,7 +165,21 @@ def _looks_like_header(row: list[str]) -> bool:
 # generic hint "amount" is a substring of both - so resolving `amount` first
 # claims the credit column, reads every debit as blank, and silently drops
 # half the file while reporting the rest as income.
-_FIELD_ORDER = ("date", "credit", "debit", "balance", "account", "amount", "memo")
+# `counterparty` resolves before `account`: "Other Party Account Number"
+# contains "account number", so the generic field would otherwise claim it.
+_FIELD_ORDER = (
+    "date",
+    "counterparty",
+    "credit",
+    "debit",
+    "balance",
+    "account",
+    "amount",
+    "memo",
+    "particulars",
+    "reference",
+    "other_party",
+)
 
 # A column whose name mentions credit or debit is never the plain signed
 # amount, however much of the word "amount" it contains.
@@ -316,6 +344,10 @@ def parse_csv(
         mapping = {**sniffed, **mapping}
 
     report.column_map = mapping
+    # Count data rows, not lines. Reporting "114 of 115 rows parsed" on a
+    # perfectly clean import - because one of them was the header - reads as a
+    # silent failure and undermines the confidence signal.
+    report.rows_seen = len(body)
 
     if "date" not in mapping or (
         "amount" not in mapping and "debit" not in mapping and "credit" not in mapping
@@ -372,6 +404,18 @@ def parse_csv(
 
         account = (cell(row, "account") or default_account).strip() or default_account
         balance = _parse_money(cell(row, "balance"))
+        counterparty = (cell(row, "counterparty") or "").strip() or None
+
+        # Everything the bank told us about this row, deduplicated so a memo
+        # that already repeats the payee does not weight the match twice.
+        seen: set[str] = set()
+        parts: list[str] = []
+        for field_name in _MATCH_TEXT_FIELDS:
+            value = (cell(row, field_name) or "").strip()
+            if value and value.upper() not in seen:
+                seen.add(value.upper())
+                parts.append(value)
+        match_text = " ".join(parts)[:400] or memo
 
         key = (account, when.isoformat(), memo.upper(), round(amount, 2))
         occurrence[key] = occurrence.get(key, 0) + 1
@@ -384,6 +428,8 @@ def parse_csv(
                 "account": account,
                 "date": when.isoformat(),
                 "memo": memo,
+                "match_text": match_text,
+                "counterparty": counterparty,
                 "amount": round(amount, 2),
                 "balance": balance,
             }

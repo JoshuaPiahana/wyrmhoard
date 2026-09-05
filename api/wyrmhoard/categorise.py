@@ -133,6 +133,27 @@ def categorise_one(memo: str, amount: float = 0.0) -> tuple[str, str, str]:
     return "uncategorised", "unknown", "unmatched"
 
 
+def is_internal_transfer(counterparty: str | None) -> bool:
+    """
+    True when the other side of this transaction is one of the household's own
+    accounts.
+
+    This is the one signal that is certain. Everything else in this module is
+    pattern-matching against free text a bank wrote for a human, but a
+    counterparty account number either belongs to this household or it does
+    not. It matters most for households with several accounts: money shuffled
+    between six of their own pots would otherwise be counted as both income
+    and spending, inflating the whole picture.
+    """
+    if not counterparty:
+        return False
+    from .accounts import own_accounts
+
+    cp = counterparty.strip()
+    known = own_accounts()
+    return cp in known or cp.replace("-", "") in known
+
+
 def recategorise_all() -> dict[str, Any]:
     """
     Re-run categorisation across the whole ledger.
@@ -160,7 +181,15 @@ def recategorise_all() -> dict[str, Any]:
                 group = "income"
             updates.append((key, group, "manual", fp))
             continue
-        key, group, by = categorise_one(tx["memo"], tx["amount"])
+        # A counterparty that is one of our own accounts settles it outright,
+        # ahead of any text rule.
+        if is_internal_transfer(tx.get("counterparty")):
+            updates.append(("transfer", "transfer", "counterparty", fp))
+            continue
+
+        # Match against every text column the bank gave us, not just the one
+        # shown on screen - payees often appear only in Particulars.
+        key, group, by = categorise_one(tx.get("match_text") or tx["memo"], tx["amount"])
         updates.append((key, group, by, fp))
 
     with db.connect() as conn:

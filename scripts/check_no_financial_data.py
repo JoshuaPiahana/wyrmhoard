@@ -51,6 +51,10 @@ BLOCKED_DIRS = ("reports/", "data/inbox/", "data/snapshots/")
 ALLOWED_ACCOUNTS = {
     "38-9014-0123456-00",
     "38-9014-0000000-01",
+    "38-9014-0000000-05",
+    # An account that is deliberately NOT the household's, for testing that
+    # foreign counterparties are not treated as internal transfers.
+    "99-9999-9999999-99",
 }
 
 # NZ bank account: bank-branch-account-suffix.

@@ -69,9 +69,12 @@
           <div class="sub"><span data-bind="summary.cash.runway_weeks" data-format="weeks">—</span> of essentials</div>
         </div>
         <div class="stat">
-          <div class="v" data-bind="mortgage.balance" data-format="money">—</div>
-          <div class="k">Mortgage remaining</div>
-          <div class="sub" data-bind="mortgageNote">—</div>
+          <div class="v" data-bind="summary.net_worth.net_worth" data-format="money">—</div>
+          <div class="k">Net worth</div>
+          <div class="sub">
+            owing <span data-bind="summary.debt.total" data-format="money">—</span>
+            <span data-bind="netWorthNote"></span>
+          </div>
         </div>
       </div>
     </section>
@@ -314,6 +317,21 @@
         <input type="file" id="file" accept=".csv" multiple hidden>
       </div>
       <div id="import-result"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Your accounts</h2>
+        <span class="hint">Worked out from the data. Correct anything wrong — a loan counted as cash makes every other number meaningless.</span>
+      </div>
+      <div class="card tablewrap" tabindex="0">
+        <table>
+          <thead>
+            <tr><th>Account</th><th class="n">Transactions</th><th class="n">Balance</th><th>Why</th><th>Role</th></tr>
+          </thead>
+          <tbody data-list="accounts"></tbody>
+        </table>
+      </div>
     </section>
 
     <section>

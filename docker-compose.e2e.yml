@@ -1,0 +1,36 @@
+# Isolation for the browser tests.
+#
+# The e2e suite drives the real API, and the API writes uploads into its data
+# directory and imports them. With the normal compose file that directory is
+# `./data` - the household's actual ledger - so running the tests injected
+# synthetic transactions into real financial data. That happened, and the
+# blended numbers were on screen for a day before anyone noticed.
+#
+# This override swaps the data and report mounts for throwaway named volumes.
+# `./hoard e2e` also runs it under its own project name with the host ports
+# released, so the tests neither clobber nor depend on a running dev stack.
+#
+# Config is still bind-mounted: the tests should exercise whatever household
+# configuration is actually present, and they are written to pass with or
+# without a household.yml.
+services:
+  api:
+    # The base file pins container names for friendly `docker compose logs`.
+    # Under a second project those names collide with the running dev stack,
+    # so let Compose generate them here.
+    container_name: !reset null
+    ports: !reset []
+    volumes:
+      - ./api/wyrmhoard:/app/wyrmhoard
+      - ./api/tests:/app/tests
+      - ./config:/config
+      - e2e-data:/data
+      - e2e-reports:/reports
+
+  web:
+    container_name: !reset null
+    ports: !reset []
+
+volumes:
+  e2e-data:
+  e2e-reports:

@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     fingerprint   TEXT PRIMARY KEY,
     account       TEXT NOT NULL,
     date          TEXT NOT NULL,          -- ISO yyyy-mm-dd
-    memo          TEXT NOT NULL,
+    memo          TEXT NOT NULL,          -- what a human should read
+    match_text    TEXT,                   -- every text field, for rule matching
+    counterparty  TEXT,                   -- the other party's account number
     amount        REAL NOT NULL,          -- negative = money out
     balance       REAL,
     category      TEXT,
@@ -53,6 +55,18 @@ CREATE TABLE IF NOT EXISTS overrides (
     category    TEXT NOT NULL,
     decided_at  TEXT NOT NULL,
     note        TEXT
+);
+
+-- What each account actually is. Roles are inferred from the data, but a
+-- human's confirmation is stored here and always wins - the same pattern as
+-- `overrides` above. Getting this wrong is expensive: a mortgage counted as
+-- cash turns a household's savings into a six-figure negative number.
+CREATE TABLE IF NOT EXISTS account_roles (
+    account    TEXT PRIMARY KEY,
+    role       TEXT NOT NULL,             -- everyday | savings | liability | ignore
+    label      TEXT,
+    confirmed  INTEGER NOT NULL DEFAULT 0,
+    decided_at TEXT NOT NULL
 );
 
 -- Provenance: which file did each number come from, and have we seen it?
@@ -146,9 +160,29 @@ def connect() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+# Columns added after the first release. Existing ledgers are migrated in
+# place rather than rebuilt, because a household's ledger is their whole
+# financial history and "delete it and re-import" is not an upgrade path.
+_ADDED_COLUMNS = {
+    "transactions": {
+        "match_text": "TEXT",
+        "counterparty": "TEXT",
+    },
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
 def init() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
 
 
 def insert_transactions(rows: Iterable[dict[str, Any]], source_file: str) -> int:
@@ -160,6 +194,8 @@ def insert_transactions(rows: Iterable[dict[str, Any]], source_file: str) -> int
             r["account"],
             r["date"],
             r["memo"],
+            r.get("match_text") or r["memo"],
+            r.get("counterparty"),
             r["amount"],
             r.get("balance"),
             r.get("category"),
@@ -176,13 +212,40 @@ def insert_transactions(rows: Iterable[dict[str, Any]], source_file: str) -> int
         before = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
         conn.executemany(
             """INSERT OR IGNORE INTO transactions
-               (fingerprint, account, date, memo, amount, balance,
-                category, grp, categorised_by, source_file, imported_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+               (fingerprint, account, date, memo, match_text, counterparty,
+                amount, balance, category, grp, categorised_by,
+                source_file, imported_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             payload,
         )
         after = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
     return after - before
+
+
+# --------------------------------------------------------------------------
+# Account roles
+# --------------------------------------------------------------------------
+def set_account_role(
+    account: str, role: str, label: str | None = None, confirmed: bool = True
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO account_roles
+               (account, role, label, confirmed, decided_at) VALUES (?,?,?,?,?)""",
+            (
+                account,
+                role,
+                label,
+                1 if confirmed else 0,
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+
+
+def account_roles() -> dict[str, dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM account_roles").fetchall()
+    return {r["account"]: dict(r) for r in rows}
 
 
 def log_import(sha: str, filename: str, rows_seen: int, rows_new: int, parser: str) -> None:

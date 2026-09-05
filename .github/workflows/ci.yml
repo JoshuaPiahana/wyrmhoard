@@ -147,29 +147,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start the stack
-        run: docker compose up -d --build api web
-
-      - name: Wait for the API
-        run: |
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
-              echo "API is up"; exit 0
-            fi
-            sleep 2
-          done
-          echo "API never became healthy"; docker compose logs api; exit 1
-
-      - name: Seed synthetic data
-        run: |
-          docker compose run --rm --no-deps api python -m wyrmhoard.cli sample
-          docker compose run --rm --no-deps api python -m wyrmhoard.cli ingest --sample
-
+      # ./hoard e2e brings up its own isolated stack with throwaway data
+      # volumes, seeds it, runs the suite and tears it down. Using the same
+      # entry point locally and here means CI cannot drift from what a
+      # contributor runs.
       - name: Run browser tests
-        run: docker compose run --rm e2e
+        run: ./hoard e2e
 
       - name: Build the family report
-        run: docker compose run --rm --no-deps api python -m wyrmhoard.cli report
+        run: |
+          docker compose up -d --build api
+          docker compose run --rm --no-deps api python -m wyrmhoard.cli sample
+          docker compose run --rm --no-deps api python -m wyrmhoard.cli ingest --sample
+          docker compose run --rm --no-deps api python -m wyrmhoard.cli report
 
       # The report is a deliverable - being able to open it from a CI run is
       # the fastest way to review a change to it.

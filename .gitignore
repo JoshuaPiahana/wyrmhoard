@@ -23,9 +23,14 @@ data/samples/*.real.*
 *.heic
 !docs/**/*.png
 
-# The household's own filled-in config (the .example.yml IS committed)
+# The household's own filled-in config (the .example.yml IS committed).
+# learned.yml holds categorisation rules written by the "fix the unknowns"
+# UI, which means it fills up with the household's actual merchants - their
+# corner shop, their piano teacher, their doctor. That is a picture of how a
+# family lives, and it must never reach a public repository.
 config/household.yml
 config/overrides.yml
+config/learned.yml
 
 # Generated reports contain real numbers
 reports/
