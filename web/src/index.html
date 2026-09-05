@@ -361,12 +361,25 @@
 
     <section>
       <div class="section-head">
+        <h2>About your household</h2>
+        <span class="hint">Nothing in a bank export can answer these. Saying &ldquo;no&rdquo; counts as an answer — it stops the tool asking.</span>
+      </div>
+      <div class="card tablewrap" tabindex="0">
+        <table>
+          <thead><tr><th>Question</th><th>Answer</th><th>How it was worked out</th></tr></thead>
+          <tbody data-list="facts"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
         <h2>Fix the unknowns</h2>
         <span class="hint">Biggest first — one decision here usually covers dozens of transactions.</span>
       </div>
       <div class="card tablewrap" tabindex="0">
         <table>
-          <thead><tr><th>Memo</th><th class="n">Count</th><th class="n">Total</th><th>Set category</th></tr></thead>
+          <thead><tr><th>Memo</th><th class="n">Count</th><th class="n">Total</th><th>Set category</th><th>Remember</th></tr></thead>
           <tbody data-list="unknowns"></tbody>
         </table>
       </div>

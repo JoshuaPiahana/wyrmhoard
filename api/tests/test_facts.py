@@ -197,3 +197,101 @@ def test_the_rent_rule_does_not_fire_on_words_containing_rent(memo):
 
     key, _, _ = categorise_one(memo, amount=-50.0)
     assert key != "rent", f"{memo!r} was wrongly categorised as rent"
+
+
+# ---------------------------------------------------------------------------
+# Answering without editing YAML
+#
+# The questions were added to the setup checklist before there was any way to
+# respond to them except opening household.yml, which made "there are no
+# children here" harder to say than it should be.
+# ---------------------------------------------------------------------------
+def test_an_answer_given_in_the_app_settles_the_question(monkeypatch):
+    set_household(monkeypatch, {})
+    assert facts.has_children()["value"] is None
+
+    facts.answer("has_children", False)
+
+    fact = facts.has_children()
+    assert fact["value"] is False
+    assert fact["known"] is True
+
+
+def test_clearing_an_answer_puts_the_question_back(monkeypatch):
+    """None is not the same answer as false - it unsettles rather than settles."""
+    set_household(monkeypatch, {})
+    facts.answer("has_partner", True)
+    assert facts.has_partner()["value"] is True
+
+    facts.answer("has_partner", None)
+
+    assert facts.has_partner()["value"] is None
+    assert "has_partner" in {q["fact"] for q in facts.unknown()}
+
+
+def test_an_answer_in_the_app_beats_the_file(monkeypatch):
+    """Otherwise a correction made in the dashboard appears not to work."""
+    set_household(monkeypatch, {"household": {"has_partner": False}})
+    assert facts.has_partner()["value"] is False
+
+    facts.answer("has_partner", True)
+    assert facts.has_partner()["value"] is True
+
+
+def test_clearing_falls_back_to_the_file_rather_than_to_unknown(monkeypatch):
+    set_household(monkeypatch, {"household": {"housing": "renting"}})
+    facts.answer("housing", "owner_freehold")
+    assert facts.housing()["value"] == "owner_freehold"
+
+    facts.answer("housing", None)
+    assert facts.housing()["value"] == "renting"
+
+
+def test_an_answer_survives_into_the_stored_shape(monkeypatch):
+    """Stored as text, so the round trip has to give back a real boolean."""
+    set_household(monkeypatch, {})
+    facts.answer("has_children", True)
+    assert db.household_facts()["has_children"] == "true"
+    assert facts.has_children()["value"] is True
+
+
+@pytest.mark.parametrize("bad", ["true", "yes", 1, 0, ""])
+def test_a_yes_no_fact_refuses_anything_that_is_not_a_boolean(monkeypatch, bad):
+    """
+    A form posting the string "false" is truthy nearly everywhere, and reading
+    it as yes would answer the question backwards.
+    """
+    set_household(monkeypatch, {})
+    with pytest.raises(ValueError):
+        facts.answer("has_children", bad)
+    assert facts.has_children()["value"] is None
+
+
+def test_an_unknown_housing_option_is_refused_with_the_valid_ones(monkeypatch):
+    set_household(monkeypatch, {})
+    with pytest.raises(ValueError) as exc:
+        facts.answer("housing", "mansion")
+    assert "owner_with_mortgage" in str(exc.value)
+    assert facts.housing()["value"] is None
+
+
+def test_an_unknown_fact_is_refused(monkeypatch):
+    set_household(monkeypatch, {})
+    with pytest.raises(ValueError) as exc:
+        facts.answer("has_yacht", True)
+    assert "has_children" in str(exc.value)
+
+
+def test_the_evidence_says_where_the_answer_came_from(monkeypatch):
+    """
+    That line is how somebody finds an answer again in order to change it, so
+    it must not send them to a file that never mentioned it.
+    """
+    set_household(monkeypatch, {"household": {"housing": "renting"}})
+    assert "household.yml" in facts.housing()["evidence"]
+
+    facts.answer("housing", "owner_freehold")
+    assert "in the app" in facts.housing()["evidence"]
+
+    facts.answer("has_children", False)
+    assert "in the app" in facts.has_children()["evidence"]

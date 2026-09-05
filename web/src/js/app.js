@@ -74,8 +74,27 @@ function applyBindings() {
 
 async function api(path, opts) {
   const res = await fetch(API + path, opts);
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) {
+    // The API writes its 400s for whoever asked - "'SP' is too short to match
+    // on safely", not "invalid input" - so surface that instead of replacing
+    // it with a status code the reader can do nothing with.
+    let detail = '';
+    try { detail = (await res.json()).detail || ''; } catch { /* not JSON */ }
+    throw new Error(detail || `${path} → ${res.status}`);
+  }
   return res.json();
+}
+
+/**
+ * Show a message on the next render, then forget it.
+ *
+ * Held in state rather than written to the DOM because every caller follows
+ * this with refresh(), and renderBanners() replaces #banners wholesale - a
+ * message written directly would be wiped by the redraw that was meant to
+ * display it.
+ */
+function notify(message, tone = 'info') {
+  state.flash = { message, tone };
 }
 
 /* ---------- derived values -------------------------------------------- */
@@ -457,14 +476,100 @@ const RENDER = {
     });
   },
 
+  // The three questions a bank export cannot answer. Answering "no" matters
+  // as much as answering "yes": it is what stops the tool asking a couple
+  // without children about a credit for children, permanently.
+  facts: el => {
+    const FACTS = {
+      has_children: { q: 'Children in the household?', kind: 'yesno' },
+      has_partner: { q: 'A partner or spouse?', kind: 'yesno' },
+      housing: {
+        q: 'This home is…',
+        options: [
+          ['owner_with_mortgage', 'Owned, with a mortgage'],
+          ['owner_freehold', 'Owned outright'],
+          ['renting', 'Rented'],
+          ['other', 'Something else'],
+        ],
+      },
+    };
+    const facts = state.facts || {};
+
+    el.innerHTML = Object.entries(FACTS).map(([key, spec]) => {
+      const f = facts[key] || {};
+      const options = spec.kind === 'yesno'
+        ? [['true', 'Yes'], ['false', 'No']]
+        : spec.options;
+      const current = f.value === null || f.value === undefined ? '' : String(f.value);
+      // "Not said" is a real choice, not a placeholder: picking it clears the
+      // answer and puts the question back, which is different from answering no.
+      const chooser = [['', 'Not said']].concat(options).map(([v, label]) =>
+        `<option value="${esc(v)}" ${v === current ? 'selected' : ''}>${esc(label)}</option>`
+      ).join('');
+
+      // Settled by the people listed in household.yml, which is richer than a
+      // yes/no and is what the entitlement maths actually reads. Offering a
+      // dropdown here would be a control that silently does nothing, so say
+      // where the answer comes from instead.
+      if (f.source === 'people') {
+        const shown = options.find(([v]) => v === current);
+        return `
+          <tr>
+            <td>${esc(spec.q)}</td>
+            <td>${esc(shown ? shown[1] : String(f.value))}</td>
+            <td class="muted">${esc(f.evidence || '')} Change it in <code>household.yml</code>.</td>
+          </tr>`;
+      }
+
+      return `
+        <tr>
+          <td>${esc(spec.q)}</td>
+          <td><select data-fact="${esc(key)}">${chooser}</select></td>
+          <td class="muted">${esc(f.source === 'unset' ? 'not answered' : (f.evidence || ''))}</td>
+        </tr>`;
+    }).join('');
+
+    $$('select[data-fact]', el).forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const fact = sel.dataset.fact;
+        const raw = sel.value;
+        // The API takes a real boolean for the yes/no facts and null to clear,
+        // so convert here rather than posting the option string.
+        let value = null;
+        if (raw === 'true') value = true;
+        else if (raw === 'false') value = false;
+        else if (raw !== '') value = raw;
+
+        sel.disabled = true;
+        try {
+          await api('/household/facts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fact, value }),
+          });
+        } catch (err) {
+          notify(String(err.message || err), 'warn');
+        } finally {
+          await refresh();
+        }
+      });
+    });
+  },
+
   unknowns: el => {
     const rows = state.unknowns || [];
     if (!rows.length) {
-      el.innerHTML = '<tr><td colspan="4" class="muted">Nothing uncategorised. Good.</td></tr>';
+      el.innerHTML = '<tr><td colspan="5" class="muted">Nothing uncategorised. Good.</td></tr>';
       return;
     }
     const options = RULES.map(r =>
       `<option value="${esc(r.key)}">${esc(r.label)}</option>`).join('');
+
+    // Ticked by default only where the memo has already repeated. The list is
+    // grouped on the memo string, so a count above one is evidence the string
+    // is stable enough to be worth a permanent rule; a single sighting might
+    // carry a reference number that never appears again, and a rule built
+    // from it would match nothing while looking like the gap was closed.
     el.innerHTML = rows.map((u, i) => `
       <tr>
         <td>${esc(u.memo)}</td>
@@ -475,19 +580,49 @@ const RENDER = {
             <option value="">Choose…</option>${options}
           </select>
         </td>
+        <td>
+          <label class="remember">
+            <input type="checkbox" data-remember="${i}" ${u.count > 1 ? 'checked' : ''}>
+            <span class="hint">future ones too</span>
+          </label>
+        </td>
       </tr>`).join('');
 
     $$('select[data-fix]', el).forEach(sel => {
       sel.addEventListener('change', async () => {
         if (!sel.value) return;
-        const item = rows[Number(sel.dataset.fix)];
+        const index = Number(sel.dataset.fix);
+        const item = rows[index];
+        const category = sel.value;
+        // Read before the first await: refresh() replaces these nodes, and
+        // reading afterwards can find a checkbox belonging to a redrawn table.
+        const remember = $(`input[data-remember="${index}"]`, el)?.checked;
         sel.disabled = true;
-        await api('/categorise', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fingerprints: item.fingerprints, category: sel.value }),
-        });
-        await refresh();
+
+        try {
+          if (remember) {
+            // Teaching claims these transactions and every future one, so
+            // there is no need to write overrides for them as well.
+            const result = await api('/learn', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ match: item.memo, category }),
+            });
+            if (result && result.warning) notify(result.warning, 'warn');
+          } else {
+            await api('/categorise', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fingerprints: item.fingerprints, category }),
+            });
+          }
+        } catch (err) {
+          // A refused pattern is a normal outcome - too short, or a memo that
+          // is really a reference number - and the message says which.
+          notify(String(err.message || err), 'warn');
+        } finally {
+          await refresh();
+        }
       });
     });
   },
@@ -518,6 +653,13 @@ function renderBanners() {
   const out = [];
   const setup = state.setup || {};
   const cov = setup.coverage || {};
+
+  // First, so the result of what was just done is not buried under the
+  // standing checklist. Cleared once shown - it reports an action, not a state.
+  if (state.flash) {
+    out.push(`<div class="note ${esc(state.flash.tone)}">${esc(state.flash.message)}</div>`);
+    state.flash = null;
+  }
 
   (setup.todo || []).forEach(t => {
     out.push(`<div class="note warn"><b>${esc(t.label)}</b> — ${esc(t.why)}</div>`);
@@ -568,11 +710,11 @@ function renderBanners() {
 async function refresh() {
   const [setup, summary, coach, recurring, entitlements, mortgage,
          snapshots, unknowns, rules, accounts, loans, imports, backups,
-         payslipData] = await Promise.all([
+         payslipData, household] = await Promise.all([
     api('/setup'), api('/summary'), api('/coach'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
-    api('/imports'), api('/backups'), api('/payslips'),
+    api('/imports'), api('/backups'), api('/payslips'), api('/household'),
   ]);
 
   Object.assign(state, {
@@ -582,7 +724,8 @@ async function refresh() {
     income: payslipData.income,
     backups: backups.backups,
     backupLocation: `Backups are written to ${backups.location} — inside your data folder, so copy them elsewhere too.`,
-    household: { name: setup.household_name },
+    household: { name: setup.household_name, ...household },
+    facts: household.facts || {},
     headline: null,
   });
   state.headline = deriveHeadline();

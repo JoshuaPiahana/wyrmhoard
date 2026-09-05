@@ -9,6 +9,7 @@ the response shapes are pinned here.
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -44,6 +45,31 @@ def client(tmp_path, monkeypatch):
     with TestClient(app) as c:
         yield c
     cache.clear_all()
+
+
+@pytest.fixture
+def private_config(tmp_path, monkeypatch):
+    """
+    A config directory of the test's own, holding only the public files.
+
+    POST /learn writes to config/learned.yml. Without this it writes into
+    whichever config directory the suite was launched against, which on a
+    development machine is the household's own - so a test would file
+    "ZZQ MYSTERY MERCHANT" among their real merchants and leave it there.
+    """
+    private = tmp_path / "config"
+    private.mkdir()
+    for name in ("rules.yml", "nz_rates.yml"):
+        source = config.CONFIG_DIR / name
+        if source.exists():
+            shutil.copy(source, private / name)
+
+    monkeypatch.setattr(config, "CONFIG_DIR", private)
+    config.reload()
+    categorise.compiled_rules.cache_clear()
+    yield private
+    config.reload()
+    categorise.compiled_rules.cache_clear()
 
 
 def _import_sample(client) -> dict:
@@ -279,3 +305,64 @@ def test_categorise_persists_across_a_cache_clear(client):
     categorise.recategorise_all()
     after = client.get("/summary").json()["coverage"]["categorised_pct"]
     assert before == after
+
+
+# ---------------------------------------------------------------------------
+# Teaching a rule
+#
+# The dashboard could only ever write per-transaction overrides, so the same
+# shop came back unrecognised with the next statement while an agent driving
+# the MCP server could fix it permanently. These pin the endpoint that closed
+# that gap.
+# ---------------------------------------------------------------------------
+def test_learning_a_rule_claims_the_transactions_and_survives_reimport(client, private_config):
+    _import_sample(client)
+    assert "ZZQ MYSTERY MERCHANT" in client.get("/uncategorised").text
+
+    result = client.post("/learn", json={"match": "ZZQ MYSTERY", "category": "groceries"}).json()
+
+    assert result["matched"] == 1
+    assert "ZZQ MYSTERY MERCHANT" not in client.get("/uncategorised").text
+
+    # The point of a rule rather than an override: it decides transactions
+    # that did not exist when it was written.
+    client.post("/recategorise")
+    assert "ZZQ MYSTERY MERCHANT" not in client.get("/uncategorised").text
+
+
+def test_learning_writes_only_to_learned_yml(client, private_config):
+    """rules.yml is public; a household's own merchants must never land in it."""
+    _import_sample(client)
+    client.post("/learn", json={"match": "ZZQ MYSTERY", "category": "groceries"})
+
+    assert "ZZQ MYSTERY" in (private_config / "learned.yml").read_text(encoding="utf-8")
+    assert "ZZQ MYSTERY" not in (private_config / "rules.yml").read_text(encoding="utf-8")
+
+
+def test_a_refused_pattern_returns_the_reason_not_just_a_status(client, private_config):
+    """
+    The dashboard shows this text to whoever typed it, so it has to say what
+    was wrong. A bare 400 leaves them guessing.
+    """
+    res = client.post("/learn", json={"match": "ZZ", "category": "groceries"})
+    assert res.status_code == 400
+    assert "too short" in res.json()["detail"]
+    assert not (private_config / "learned.yml").exists(), "a refused pattern still wrote a rule"
+
+
+def test_an_invented_category_is_refused(client, private_config):
+    res = client.post("/learn", json={"match": "ZZQ MYSTERY", "category": "beer_money"})
+    assert res.status_code == 400
+    assert "beer_money" in res.json()["detail"]
+
+
+def test_learning_reports_spending_it_moves_out_of_another_category(client, private_config):
+    """The same warning the MCP tool carries, over HTTP, for the same reason."""
+    _import_sample(client)
+    result = client.post("/learn", json={"match": "PAK N SAVE", "category": "takeaways"}).json()
+
+    assert result["changed_group_count"] == 1
+    assert result["warning"] is not None
+    moved = result["reclassified"][0]
+    assert moved["from_group"] == "essential"
+    assert moved["to_group"] == "discretionary"

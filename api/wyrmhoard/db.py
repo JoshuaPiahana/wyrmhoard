@@ -69,6 +69,23 @@ CREATE TABLE IF NOT EXISTS account_roles (
     decided_at TEXT NOT NULL
 );
 
+-- The handful of things about the household that no export can reveal:
+-- whether there are children, whether there is a partner, whether the home is
+-- owned or rented. See facts.py for why each takes three answers rather than
+-- two.
+--
+-- Stored here rather than written back into household.yml because writing YAML
+-- means re-serialising it, and that file is mostly comments explaining what
+-- each field is for. A tool that answers one question by deleting the
+-- explanations around it has made the file worse. household.yml stays the
+-- hand-edit path and still wins; this is how the same answer gets given from
+-- the dashboard or an agent without touching the file.
+CREATE TABLE IF NOT EXISTS household_facts (
+    fact       TEXT PRIMARY KEY,           -- has_children | has_partner | housing
+    value      TEXT,                       -- "true" | "false" | a housing option
+    decided_at TEXT NOT NULL
+);
+
 -- Provenance: which file did each number come from, and have we seen it?
 CREATE TABLE IF NOT EXISTS import_log (
     file_sha256 TEXT PRIMARY KEY,
@@ -443,6 +460,33 @@ def set_account_role(
                 datetime.now().isoformat(timespec="seconds"),
             ),
         )
+
+
+def set_household_fact(fact: str, value: str | None) -> None:
+    """
+    Record an answer to one of the questions the data cannot settle.
+
+    A value of None deletes the row rather than storing a null, so "I have not
+    said" is the absence of a record instead of a third kind of stored value.
+    That keeps one representation of unknown in the database, and it means
+    clearing an answer restores whatever household.yml or inference would have
+    said on their own.
+    """
+    with connect() as conn:
+        if value is None:
+            conn.execute("DELETE FROM household_facts WHERE fact = ?", (fact,))
+            return
+        conn.execute(
+            """INSERT OR REPLACE INTO household_facts (fact, value, decided_at)
+               VALUES (?,?,?)""",
+            (fact, value, datetime.now().isoformat(timespec="seconds")),
+        )
+
+
+def household_facts() -> dict[str, str]:
+    with connect() as conn:
+        rows = conn.execute("SELECT fact, value FROM household_facts").fetchall()
+    return {r["fact"]: r["value"] for r in rows}
 
 
 def account_roles() -> dict[str, dict[str, Any]]:

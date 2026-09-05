@@ -73,9 +73,46 @@ WHY = {
 _MIN_RENT_PAYMENTS = 3
 
 
+def _answered(key: str) -> Any:
+    """
+    An answer given through the app, or None if none was.
+
+    Checked before household.yml so a correction made in the dashboard takes
+    effect immediately, which is the whole point of being able to give it
+    there. Values are stored as text, so "true"/"false" come back as booleans
+    and everything else as the string it was.
+    """
+    from . import db
+
+    try:
+        raw = db.household_facts().get(key)
+    except Exception:
+        # No ledger yet. A fresh install has no database and no answers in it.
+        return None
+    if raw is None:
+        return None
+    if raw.lower() in ("true", "false"):
+        return raw.lower() == "true"
+    return raw
+
+
 def _stated(key: str) -> Any:
-    """What the household wrote down, or None if they left it alone."""
-    return (config.household().raw.get("household") or {}).get(key)
+    """The household's answer: given in the app, else written in the file."""
+    return _stated_with_origin(key)[0]
+
+
+def _stated_with_origin(key: str) -> tuple[Any, str]:
+    """
+    The answer, and where it came from.
+
+    The origin is carried through to the evidence line because that line is
+    how somebody finds the answer again in order to change it, and "set in
+    household.yml" sends them to a file that does not mention it.
+    """
+    answered = _answered(key)
+    if answered is not None:
+        return answered, "in the app"
+    return (config.household().raw.get("household") or {}).get(key), "in household.yml"
 
 
 def _fact(
@@ -126,17 +163,17 @@ def has_children() -> dict[str, Any]:
             f"{len(named)} child(ren) listed in household.yml.",
         )
 
-    stated = _stated("has_children")
+    stated, origin = _stated_with_origin("has_children")
     if stated is True:
         return _fact(
             True,
             "stated",
             "certain",
-            "Household says yes, but no birth dates are recorded yet - "
+            f"Answered {origin}: yes, but no birth dates are recorded yet - "
             "entitlement estimates need the dates, not just the count.",
         )
     if stated is False:
-        return _fact(False, "stated", "certain", "Household says there are no children.")
+        return _fact(False, "stated", "certain", f"Answered {origin}: there are no children.")
 
     return _unknown("has_children")
 
@@ -147,13 +184,13 @@ def has_partner() -> dict[str, Any]:
     if partners:
         return _fact(True, "people", "certain", "A partner is listed in household.yml.")
 
-    stated = _stated("has_partner")
+    stated, origin = _stated_with_origin("has_partner")
     if stated in (True, False):
         return _fact(
             stated,
             "stated",
             "certain",
-            f"Household says {'yes' if stated else 'no'}.",
+            f"Answered {origin}: {'yes' if stated else 'no'}.",
         )
 
     return _unknown("has_partner")
@@ -187,7 +224,7 @@ def housing() -> dict[str, Any]:
     advice about overpaying a mortgage is noise to a renter, and advice about
     saving a deposit is noise to somebody who already owns.
     """
-    stated = _stated("housing")
+    stated, origin = _stated_with_origin("housing")
     if stated:
         value = str(stated)
         if value not in HOUSING:
@@ -197,7 +234,7 @@ def housing() -> dict[str, Any]:
                 "none",
                 f"household.housing is '{value}', which is not one of {list(HOUSING)}.",
             )
-        return _fact(value, "stated", "certain", "Set in household.yml.")
+        return _fact(value, "stated", "certain", f"Answered {origin}.")
 
     from . import accounts
 
@@ -208,8 +245,8 @@ def housing() -> dict[str, Any]:
             "inferred",
             "high",
             f"{len(loans)} loan account(s) in the ledger. If one of these is a "
-            "car or personal loan rather than a home loan, set `housing` in "
-            "household.yml to correct it.",
+            "car or personal loan rather than a home loan, correct it on the "
+            "Data tab or set `housing` in household.yml.",
         )
 
     rent_payments = _rent_payment_count()
@@ -243,6 +280,46 @@ def unknown() -> list[dict[str, str]]:
         for key, fact in all_facts().items()
         if not fact["known"]
     ]
+
+
+def answer(fact: str, value: Any) -> dict[str, Any]:
+    """
+    Record the household's answer to one of these questions.
+
+    Exists so the answer can be given wherever the question was asked, rather
+    than only by opening a YAML file - which was the state of things when
+    these questions were added, and made "we have no children" a harder thing
+    to say than it should be.
+
+    `value` of None clears the answer, which is different from answering no:
+    it puts the question back rather than settling it. Raises ValueError, with
+    wording a caller can show to whoever asked, when the fact or the value is
+    not one this module knows.
+    """
+    if fact not in QUESTIONS:
+        raise ValueError(f"Unknown fact '{fact}'. Expected one of: {', '.join(QUESTIONS)}.")
+
+    from . import db
+
+    if value is None:
+        db.set_household_fact(fact, None)
+        return all_facts()[fact]
+
+    if fact == "housing":
+        if value not in HOUSING:
+            raise ValueError(
+                f"'{value}' is not a housing option. Expected one of: {', '.join(HOUSING)}."
+            )
+        db.set_household_fact(fact, str(value))
+        return all_facts()[fact]
+
+    # The remaining two are yes/no. Accepting only real booleans on purpose:
+    # a string "false" arriving from a form is truthy in most languages, and
+    # silently reading it as yes would answer the question backwards.
+    if not isinstance(value, bool):
+        raise ValueError(f"'{fact}' takes true, false, or null - not {value!r}.")
+    db.set_household_fact(fact, "true" if value else "false")
+    return all_facts()[fact]
 
 
 def summary() -> dict[str, Any]:

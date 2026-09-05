@@ -495,6 +495,40 @@ def get_progress() -> dict[str, Any]:
 
 
 @server.tool()
+def answer_household_fact(fact: str, value: bool | str | None = None) -> dict[str, Any]:
+    """
+    Record an answer to something no bank export can reveal. Writes to disk.
+
+    `describe_data_gaps` lists these as questions. This is how the answer gets
+    recorded once the user gives it, so the tool stops asking and starts
+    reasoning correctly.
+
+    Three facts, and each takes three answers - true, false, or null for "not
+    established". The difference between false and null matters: told there
+    are no children, the tool stops raising Working for Families entirely;
+    told nothing, it keeps asking, because for a family that does qualify that
+    credit is usually the largest sum this tool can find.
+
+        has_children  true | false | null
+        has_partner   true | false | null
+        housing       owner_with_mortgage | owner_freehold | renting | other | null
+
+    Only record what the user actually said. Do not infer an answer from the
+    conversation and store it as though they had given it - a stored answer
+    outranks the tool's own inference from their bank data, so a wrong guess
+    here is worse than no answer at all. Pass null to clear one.
+
+    Args:
+        fact: has_children, has_partner or housing.
+        value: the answer, or null to put the question back.
+    """
+    try:
+        return {"ok": True, "fact": fact, "resolved": facts.answer(fact, value)}
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc), "valid_facts": list(facts.QUESTIONS)}
+
+
+@server.tool()
 def take_snapshot(note: str | None = None) -> dict[str, Any]:
     """
     Freeze this month's figures so future progress can be measured against

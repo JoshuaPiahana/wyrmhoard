@@ -279,6 +279,65 @@ def apply_override(req: OverrideRequest) -> dict[str, Any]:
     return categorise.recategorise_all()
 
 
+class FactRequest(BaseModel):
+    fact: str
+    # Explicitly typed rather than left as Any so FastAPI does not coerce a
+    # posted "false" into the string it looks like. None means "unset it",
+    # which is not the same answer as false.
+    value: bool | str | None = None
+
+
+@app.post("/household/facts")
+def answer_fact(req: FactRequest) -> dict[str, Any]:
+    """
+    Answer one of the questions no bank export can settle.
+
+    These went into the setup checklist before there was any way to respond to
+    them except editing household.yml by hand, which made "there are no
+    children here" oddly difficult to say - and left the tool asking forever.
+
+    The answer is stored in the ledger, not written back into household.yml.
+    That file is mostly comments explaining what each field is for, and
+    answering a question by re-serialising the file would strip them.
+    household.yml still works and still wins if both are set.
+    """
+    try:
+        return facts.answer(req.fact, req.value)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class LearnRequest(BaseModel):
+    match: str
+    category: str
+
+
+@app.post("/learn")
+def learn_rule(req: LearnRequest) -> dict[str, Any]:
+    """
+    Teach a merchant, so the same decision is not made again next month.
+
+    The difference between this and POST /categorise is how long the answer
+    lasts. An override fixes the transactions it names and nothing else, so
+    the same shop arrives unrecognised again with the next statement. A rule
+    is matched against everything, including transactions that do not exist
+    yet.
+
+    Agents have had this since the MCP server gained `teach_category`; the
+    dashboard could only ever fix rows one batch at a time, which made the
+    person sitting in front of the tool worse off than the model driving it.
+
+    Both write paths run through categorise.learn(), so the validation, the
+    file format and the reporting of moved spending are the same either way.
+    """
+    try:
+        return categorise.learn(req.match, req.category)
+    except ValueError as exc:
+        # The messages are written to be read by whoever asked, so pass them
+        # through rather than replacing them with something generic.
+        raise HTTPException(400, str(exc)) from exc
+
+
 @app.post("/recategorise")
 def recategorise() -> dict[str, Any]:
     return categorise.recategorise_all()

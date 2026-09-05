@@ -221,3 +221,10 @@ select, input[type=text]{
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 .muted{color:var(--ink-faint); font-size:13px}
+
+/* "Remember" toggle in the unknowns table. The label wraps the checkbox so
+   the hint text is part of the hit target - the box alone is a small target
+   on a touch screen, and this row is the one people use most. */
+.remember{display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap}
+.remember input{cursor:pointer; margin:0}
+.remember .hint{font-size:13px; color:var(--ink-faint)}
