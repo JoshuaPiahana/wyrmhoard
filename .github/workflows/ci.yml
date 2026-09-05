@@ -35,10 +35,17 @@ jobs:
       - name: No financial data in the repository
         run: python scripts/check_no_financial_data.py --all
 
+      # The gitleaks binary directly, not gitleaks-action. The action calls a
+      # licensing server and wants permissions beyond `contents: read`, which
+      # made it fail on a clean repo - and a security gate that fails for
+      # reasons unrelated to security is a gate people learn to ignore.
+      # Running the pinned image is faster, needs no token, and is exactly
+      # what .pre-commit-config.yaml runs locally.
       - name: Scan history for secrets
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            detect --source=/repo --redact --no-banner --exit-code=1
 
   # ---------------------------------------------------------------------
   lint:

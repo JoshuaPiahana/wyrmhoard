@@ -26,6 +26,16 @@ updates:
     directory: /api
     schedule:
       interval: monthly
+    ignore:
+      # Patch bumps of the pinned Python only. New Python minors land well
+      # before pandas and pydantic ship wheels for them, so an automatic bump
+      # breaks the image build - CI caught exactly that on a proposed
+      # 3.12 -> 3.14 jump. Moving Python is a deliberate decision that also
+      # needs the pyproject requires-python and the CI test matrix updated.
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
   - package-ecosystem: github-actions
     directory: /
