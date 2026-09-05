@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
 # Wyrmhoard - thin wrapper so the monthly routine is two short commands rather than
-# two long ones. Run from WSL:  ./hoard ingest
+# two long ones. Works from Linux, WSL, or Git Bash on Windows:  ./hoard ingest
 #
 # No `make` dependency on purpose; Ubuntu images do not always ship it, and a
 # routine that fails on a missing tool is a routine that gets abandoned.
@@ -9,10 +9,20 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Git Bash rewrites anything that looks like a Unix path before handing it to a
+# native Windows binary, so `-v "$PWD:/repo"` reached docker as a mangled pair
+# and the mount silently did not happen. The tests that need the repo root then
+# skipped themselves - passing, in the sense that nothing failed, while two
+# guards quietly stopped running. Turning the rewriting off is the documented
+# fix, and it is a no-op everywhere else.
+case "${OSTYPE:-}" in
+  msys* | cygwin*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
+
 run() { docker compose run --rm --no-deps api python -m wyrmhoard.cli "$@"; }
 
 if ! docker info >/dev/null 2>&1; then
-  echo "Docker daemon is not running. Start it with:  sudo service docker start" >&2
+  echo "Docker is not running. Start Docker Desktop, or in WSL: sudo service docker start" >&2
   exit 1
 fi
 
