@@ -54,21 +54,53 @@ def _fmt(v: float | None) -> str:
     return f"${v:,.0f}" if v is not None else "-"
 
 
-def build_findings() -> list[Finding]:
-    hh = config.household()
-    rt = config.rates()
-    s = cashflow.summary()
-    typ = s["typical_month"]
-    cash = s["cash"]
-    leaks = s["small_leaks"]
-    trend = s["trend"]
-    rec = recurring.summary()
-    ent = entitlements.estimate()
-    cats = s["by_category"]
+@dataclass(frozen=True)
+class Context:
+    """
+    Everything the checks read, computed once.
 
+    Each check used to be a numbered block inside a single 590-line function,
+    sharing these as locals. Passing them explicitly is what makes the blocks
+    separable: a check can now be read, tested and changed on its own, and the
+    order they run in is a list rather than the order somebody happened to
+    write them.
+    """
+
+    hh: Any
+    rt: Any
+    s: dict[str, Any]
+    typ: dict[str, Any]
+    cash: dict[str, Any]
+    leaks: dict[str, Any]
+    trend: dict[str, Any]
+    rec: dict[str, Any]
+    ent: dict[str, Any]
+    cats: list[dict[str, Any]]
+    inferred_loans: list[dict[str, Any]]
+
+    @classmethod
+    def gather(cls) -> Context:
+        s = cashflow.summary()
+        return cls(
+            hh=config.household(),
+            rt=config.rates(),
+            s=s,
+            typ=s["typical_month"],
+            cash=s["cash"],
+            leaks=s["small_leaks"],
+            trend=s["trend"],
+            rec=recurring.summary(),
+            ent=entitlements.estimate(),
+            cats=s["by_category"],
+            inferred_loans=mortgage.infer_loans(),
+        )
+
+
+def _check_monthly_margin(c: Context) -> list[Finding]:
+    """Is the household going backwards? Everything else serves this."""
+    typ = c.typ
     out: list[Finding] = []
 
-    # ---- 1. The central question: is the household going backwards? --------
     if typ.get("available"):
         net = typ["net_median"]
         if net < 0:
@@ -129,7 +161,14 @@ def build_findings() -> list[Finding]:
                 )
             )
 
-    # ---- 2. Runway: how long could the household survive a shock? ----------
+    return out
+
+
+def _check_runway(c: Context) -> list[Finding]:
+    """How long the household could survive a shock."""
+    cash = c.cash
+    out: list[Finding] = []
+
     weeks = cash.get("runway_weeks")
     if weeks is not None:
         if weeks < 2:
@@ -167,7 +206,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 3. Entitlements: usually the largest single lever -----------------
+    return out
+
+
+def _check_entitlements(c: Context) -> list[Finding]:
+    """Usually the largest single lever available."""
+    ent = c.ent
+    out: list[Finding] = []
+
     if ent.get("available") and ent.get("headline"):
         gap = ent.get("gap") or 0
         sev = {"high": "critical", "medium": "high", "low": "low"}.get(
@@ -203,7 +249,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 4. Subscriptions ---------------------------------------------------
+    return out
+
+
+def _check_subscriptions(c: Context) -> list[Finding]:
+    """Small individually, which is exactly why they survive."""
+    rec = c.rec
+    out: list[Finding] = []
+
     if rec["subscriptions_count"]:
         out.append(
             Finding(
@@ -243,7 +296,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 5. Small spending --------------------------------------------------
+    return out
+
+
+def _check_small_spending(c: Context) -> list[Finding]:
+    """The death-by-a-thousand-cuts number budgets miss."""
+    leaks = c.leaks
+    out: list[Finding] = []
+
     if leaks.get("available") and leaks["per_year"] > 500:
         out.append(
             Finding(
@@ -265,7 +325,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 6. The biggest discretionary categories ---------------------------
+    return out
+
+
+def _check_top_discretionary(c: Context) -> list[Finding]:
+    """The biggest categories the household actually chooses."""
+    cats = c.cats
+    out: list[Finding] = []
+
     disc = [c for c in cats if c["group"] == "discretionary"][:3]
     if disc:
         total = sum(c["per_year"] for c in disc)
@@ -289,7 +356,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 7. Categories worth an honest conversation ------------------------
+    return out
+
+
+def _check_sensitive_categories(c: Context) -> list[Finding]:
+    """Categories worth an honest conversation."""
+    cats = c.cats
+    out: list[Finding] = []
+
     for cat in cats:
         if cat.get("flagged") and cat["per_year"] > 200:
             out.append(
@@ -308,7 +382,14 @@ def build_findings() -> list[Finding]:
                 )
             )
 
-    # ---- 8. Lumpy bills: the ambush ----------------------------------------
+    return out
+
+
+def _check_lumpy_bills(c: Context) -> list[Finding]:
+    """Annual bills that ambush a household without sinking funds."""
+    cats = c.cats
+    out: list[Finding] = []
+
     sinking = [c for c in cats if c["group"] == "sinking"]
     annual_lumpy = sum(c["per_year"] for c in sinking)
     if annual_lumpy > 0:
@@ -333,7 +414,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 9. Bank fees -------------------------------------------------------
+    return out
+
+
+def _check_bank_fees(c: Context) -> list[Finding]:
+    """Money paid for nothing."""
+    cats = c.cats
+    out: list[Finding] = []
+
     fees = next((c for c in cats if c["category"] == "bank_fees"), None)
     if fees and fees["per_year"] > 60:
         out.append(
@@ -355,7 +443,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 10. KiwiSaver ------------------------------------------------------
+    return out
+
+
+def _check_kiwisaver(c: Context) -> list[Finding]:
+    """Employer matching is the highest-return money available."""
+    hh, rt, cats = c.hh, c.rt, c.cats
+    out: list[Finding] = []
+
     # Payslips are authoritative here: they state the actual contribution, so
     # a household with one imported is never asked whether they contribute.
     ks = next((c for c in cats if c["category"] == "kiwisaver"), None)
@@ -393,10 +488,16 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 10b. Loans, from the accounts themselves ---------------------------
+    return out
+
+
+def _check_loans(c: Context) -> list[Finding]:
+    """Loan terms derived from the loan's own transactions."""
+    inferred_loans = c.inferred_loans
+    out: list[Finding] = []
+
     # Preferred over the household.yml figures below: these are derived from
     # the loan's own transactions, so they cannot go stale.
-    inferred_loans = mortgage.infer_loans()
     for loan in inferred_loans:
         if not loan.get("balance"):
             continue
@@ -498,7 +599,14 @@ def build_findings() -> list[Finding]:
                 )
             )
 
-    # ---- 11. Mortgage, for households that have one -------------------------
+    return out
+
+
+def _check_mortgage(c: Context) -> list[Finding]:
+    """For households with a mortgage the accounts did not reveal."""
+    hh, inferred_loans = c.hh, c.inferred_loans
+    out: list[Finding] = []
+
     # Renters and mortgage-free owners get no findings here at all. Nagging
     # somebody about a loan they do not have is the fastest way to make a tool
     # feel like it was written for somebody else.
@@ -564,7 +672,14 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 12. Trend ----------------------------------------------------------
+    return out
+
+
+def _check_trend(c: Context) -> list[Finding]:
+    """Direction of travel over recent months."""
+    trend = c.trend
+    out: list[Finding] = []
+
     if trend.get("available"):
         direction = trend["direction"]
         if direction == "improving":
@@ -622,7 +737,14 @@ def build_findings() -> list[Finding]:
                 )
             )
 
-    # ---- 13. Wins worth naming ---------------------------------------------
+    return out
+
+
+def _check_wins(c: Context) -> list[Finding]:
+    """What is already going right, named explicitly."""
+    cats = c.cats
+    out: list[Finding] = []
+
     has_consumer_debt = any(c["category"] in {"bnpl", "credit_card", "personal_loan"} for c in cats)
     if not has_consumer_debt:
         out.append(
@@ -640,8 +762,42 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    out.sort(key=lambda f: (SEVERITY_RANK.get(f.severity, 9), -(f.amount or 0)))
     return out
+
+
+# The order the checks run in. It decides nothing the reader sees: the ranking
+# below sorts every finding by severity and then by size, so this list only
+# groups related checks together for whoever is reading the file.
+CHECKS = (
+    _check_monthly_margin,
+    _check_runway,
+    _check_entitlements,
+    _check_subscriptions,
+    _check_small_spending,
+    _check_top_discretionary,
+    _check_sensitive_categories,
+    _check_lumpy_bills,
+    _check_bank_fees,
+    _check_kiwisaver,
+    _check_loans,
+    _check_mortgage,
+    _check_trend,
+    _check_wins,
+)
+
+
+def build_findings() -> list[Finding]:
+    """
+    Every check, run against one shared snapshot of the numbers.
+
+    Ranked most severe first, and within a severity by how much money is at
+    stake - a family will act on three things, not thirty, so the order is
+    what decides which three they read.
+    """
+    c = Context.gather()
+    findings = [finding for check in CHECKS for finding in check(c)]
+    findings.sort(key=lambda f: (SEVERITY_RANK.get(f.severity, 9), -(f.amount or 0)))
+    return findings
 
 
 def build_plan() -> list[dict[str, Any]]:
