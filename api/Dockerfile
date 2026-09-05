@@ -6,7 +6,7 @@ FROM python:3.12-slim
 #      filesystem, which cannot tell an ignored local household.yml from a
 #      committed one and so fails on correct behaviour.
 RUN apt-get update \
-# shellcheck: so `./kete lint` runs exactly the checks CI runs. A local
+# shellcheck: so `./hoard lint` runs exactly the checks CI runs. A local
 #      command that passes while CI fails is worse than no local command.
  && apt-get install -y --no-install-recommends \
       libjpeg62-turbo zlib1g git shellcheck \
@@ -17,16 +17,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY kete ./kete
+COPY wyrmhoard ./wyrmhoard
 COPY tests ./tests
 
 # Config and data are bind-mounted at runtime so the household can edit them
 # from Windows without rebuilding the image.
-ENV KETE_CONFIG_DIR=/config \
-    KETE_DATA_DIR=/data \
+ENV WYRMHOARD_CONFIG_DIR=/config \
+    WYRMHOARD_DATA_DIR=/data \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 EXPOSE 8000
 
-CMD ["uvicorn", "kete.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "wyrmhoard.api:app", "--host", "0.0.0.0", "--port", "8000"]

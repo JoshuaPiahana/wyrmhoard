@@ -58,6 +58,6 @@ body:
     attributes:
       label: What the parser reported
       description: |
-        Run `./kete ingest` and paste the confidence, column map and warnings.
+        Run `./hoard ingest` and paste the confidence, column map and warnings.
         The column map contains no personal data.
       render: shell

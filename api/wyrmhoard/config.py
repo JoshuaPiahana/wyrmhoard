@@ -11,9 +11,9 @@ from typing import Any
 
 import yaml
 
-CONFIG_DIR = Path(os.environ.get("KETE_CONFIG_DIR", "config"))
-DATA_DIR = Path(os.environ.get("KETE_DATA_DIR", "data"))
-REPORT_DIR = Path(os.environ.get("KETE_REPORT_DIR", "reports"))
+CONFIG_DIR = Path(os.environ.get("WYRMHOARD_CONFIG_DIR", "config"))
+DATA_DIR = Path(os.environ.get("WYRMHOARD_DATA_DIR", "data"))
+REPORT_DIR = Path(os.environ.get("WYRMHOARD_REPORT_DIR", "reports"))
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

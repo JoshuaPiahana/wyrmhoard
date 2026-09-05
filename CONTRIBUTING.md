@@ -6,7 +6,7 @@ decisions, which makes some contributions much more welcome than others.
 ## Before anything else
 
 **Never commit financial data.** Not yours, not a friend's, not "anonymised"
-data. If you need a fixture, extend `api/kete/samples.py`, which generates
+data. If you need a fixture, extend `api/wyrmhoard/samples.py`, which generates
 synthetic transactions. A pre-commit hook and a CI job both block data-bearing
 files, but the first line of defence is you.
 
@@ -18,10 +18,10 @@ pip install pre-commit && pre-commit install
 
 ```bash
 git clone <your fork>
-cd kete
+cd wyrmhoard
 cp config/household.example.yml config/household.yml
 docker compose up -d
-./kete sample && ./kete ingest --sample
+./hoard sample && ./hoard ingest --sample
 ```
 
 Everything runs in containers. You do not need Python on your machine.
@@ -29,13 +29,13 @@ Everything runs in containers. You do not need Python on your machine.
 ## The checks
 
 ```bash
-./kete lint     # data guard, ruff, mypy
-./kete test     # unit and integration
-./kete e2e      # browser tests against the running stack
-./kete check    # all three, in the order CI runs them
+./hoard lint     # data guard, ruff, mypy
+./hoard test     # unit and integration
+./hoard e2e      # browser tests against the running stack
+./hoard check    # all three, in the order CI runs them
 ```
 
-CI runs the same things. If `./kete check` passes locally, CI should pass too.
+CI runs the same things. If `./hoard check` passes locally, CI should pass too.
 
 ## What makes a good contribution
 
@@ -47,7 +47,7 @@ CI runs the same things. If `./kete check` passes locally, CI should pass too.
 - **Merchant rules for your region.** `config/rules.yml` is currently
   NZ-heavy. Rules for other countries make the tool useful to more people.
 - **A rates module for another country.** `config/nz_rates.yml` and
-  `api/kete/analysis/entitlements.py` show the pattern. Entitlements are where
+  `api/wyrmhoard/analysis/entitlements.py` show the pattern. Entitlements are where
   households lose the most money, and every country has its own.
 - **Accessibility and clarity fixes.** This gets read by families, sometimes
   by children, sometimes by people using a screen reader.

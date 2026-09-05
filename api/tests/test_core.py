@@ -23,9 +23,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kete import cache, categorise, db
-from kete.analysis import cashflow
-from kete.ingest.bank_csv import _parse_money, parse_csv
+from wyrmhoard import cache, categorise, db
+from wyrmhoard.analysis import cashflow
+from wyrmhoard.ingest.bank_csv import _parse_money, parse_csv
 
 
 # ---------------------------------------------------------------------------

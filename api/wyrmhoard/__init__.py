@@ -1,9 +1,12 @@
 """
-kete - a household financial picture, assembled from your own records.
+wyrmhoard - a household financial picture, assembled from your own records.
 
-A kete is a woven flax basket for gathering and carrying things worth keeping.
-That is roughly the job here: gather the scattered records of a household's
-money into one place, and make the picture honest enough to act on.
+A wyrm knows its hoard to the last coin. It does not guess, it is not
+surprised, and nothing goes missing without being noticed.
+
+That is the whole idea here: gather the scattered records of a household's
+money into one place, count them honestly, and make the picture clear enough
+to act on. The gold is not the point. Knowing exactly what you have is.
 
 Design rules this codebase holds to:
 

@@ -22,7 +22,7 @@ TABS = ["overview", "spending", "actions", "repeats", "entitlements", "progress"
 # Loading
 # ---------------------------------------------------------------------------
 def test_page_loads_with_the_right_title(dashboard: Page):
-    expect(dashboard).to_have_title(re.compile("kete"))
+    expect(dashboard).to_have_title(re.compile("wyrmhoard", re.I))
 
 
 def test_no_console_errors_on_load(dashboard: Page, console_errors: list[str]):

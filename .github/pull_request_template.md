@@ -9,12 +9,12 @@
 
 ## How it was tested
 
-<!-- `./kete check` output, or which specific tests. Say what you could NOT test. -->
+<!-- `./hoard check` output, or which specific tests. Say what you could NOT test. -->
 
 ## Checklist
 
-- [ ] No real financial data is included in this change (use `api/kete/samples.py`)
-- [ ] `./kete check` passes locally
+- [ ] No real financial data is included in this change (use `api/wyrmhoard/samples.py`)
+- [ ] `./hoard check` passes locally
 - [ ] New behaviour has a test; a bug fix has a **regression** test
 - [ ] Still works for households unlike mine — no mortgage, no children, two
       incomes, outside New Zealand (see `api/tests/test_household_shapes.py`)

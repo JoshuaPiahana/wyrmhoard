@@ -38,7 +38,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="kete",
+    title="Wyrmhoard",
     version=__version__,
     description="Household finance, computed locally.",
     lifespan=lifespan,

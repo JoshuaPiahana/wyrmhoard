@@ -17,8 +17,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kete import cache, categorise, config, db
-from kete.api import app
+from wyrmhoard import cache, categorise, config, db
+from wyrmhoard.api import app
 
 SAMPLE_CSV = "\n".join(
     [

@@ -4,28 +4,28 @@ services:
 
   api:
     build: ./api
-    container_name: kete-api
+    container_name: wyrmhoard-api
     ports:
       - "127.0.0.1:8000:8000"     # loopback only - not exposed to your LAN
     volumes:
-      - ./api/kete:/app/kete      # live reload while developing
+      - ./api/wyrmhoard:/app/wyrmhoard      # live reload while developing
       - ./api/tests:/app/tests
       - ./config:/config
       - ./data:/data
       - ./reports:/reports
     environment:
-      KETE_CONFIG_DIR: /config
-      KETE_DATA_DIR: /data
-      KETE_REPORT_DIR: /reports
+      WYRMHOARD_CONFIG_DIR: /config
+      WYRMHOARD_DATA_DIR: /data
+      WYRMHOARD_REPORT_DIR: /reports
       # Without this the container runs UTC and every report is dated a day
       # behind - NZ is 12-13 hours ahead, so "today" is almost always wrong.
       TZ: Pacific/Auckland
-    command: uvicorn kete.api:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn wyrmhoard.api:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
   web:
     image: nginx:1.27-alpine
-    container_name: kete-web
+    container_name: wyrmhoard-web
     ports:
       - "127.0.0.1:8080:80"
     volumes:
@@ -37,7 +37,7 @@ services:
 
   # Browser tests. Behind a profile so `docker compose up` never pulls the
   # 2GB Playwright image for someone who just wants to look at their money.
-  #   ./kete e2e
+  #   ./hoard e2e
   e2e:
     profiles: ["e2e"]
     image: mcr.microsoft.com/playwright/python:v1.49.1-noble
@@ -45,7 +45,7 @@ services:
     volumes:
       - ./e2e:/e2e
     environment:
-      KETE_E2E_URL: http://web
+      WYRMHOARD_E2E_URL: http://web
     depends_on:
       - web
     command: >

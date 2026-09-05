@@ -72,7 +72,7 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck kete scripts/*.sh
+          shellcheck hoard scripts/*.sh
 
   # ---------------------------------------------------------------------
   test:
@@ -115,12 +115,12 @@ jobs:
           context: ./api
           push: false
           load: true
-          tags: kete-api:ci
+          tags: wyrmhoard-api:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Image runs and the CLI works
-        run: docker run --rm kete-api:ci python -m kete.cli --help
+        run: docker run --rm wyrmhoard-api:ci python -m wyrmhoard.cli --help
 
   # ---------------------------------------------------------------------
   # The full stack, driven through a real browser. This is what catches the
@@ -149,14 +149,14 @@ jobs:
 
       - name: Seed synthetic data
         run: |
-          docker compose run --rm --no-deps api python -m kete.cli sample
-          docker compose run --rm --no-deps api python -m kete.cli ingest --sample
+          docker compose run --rm --no-deps api python -m wyrmhoard.cli sample
+          docker compose run --rm --no-deps api python -m wyrmhoard.cli ingest --sample
 
       - name: Run browser tests
         run: docker compose run --rm e2e
 
       - name: Build the family report
-        run: docker compose run --rm --no-deps api python -m kete.cli report
+        run: docker compose run --rm --no-deps api python -m wyrmhoard.cli report
 
       # The report is a deliverable - being able to open it from a CI run is
       # the fastest way to review a change to it.
@@ -192,9 +192,9 @@ jobs:
             curl -fsS http://127.0.0.1:8080/ > /dev/null && break
             sleep 2
           done
-          ./kete sample
-          ./kete ingest --sample
-          ./kete summary
-          ./kete report
+          ./hoard sample
+          ./hoard ingest --sample
+          ./hoard summary
+          ./hoard report
           test -f reports/latest.html || { echo "No report produced"; exit 1; }
           echo "Quickstart completed on a clean checkout."

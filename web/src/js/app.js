@@ -1,5 +1,5 @@
 /* ==========================================================================
-   kete — dashboard
+   wyrmhoard — dashboard
 
    No framework, no build step, no dependencies. Two reasons: this has to keep
    working in five years without anyone running `npm install`, and a design
@@ -368,7 +368,7 @@ function showTab(name) {
   $$('nav.tabs button').forEach(b =>
     b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  try { localStorage.setItem('kete.tab', name); } catch { /* private mode */ }
+  try { localStorage.setItem('wyrmhoard.tab', name); } catch { /* private mode */ }
 }
 
 async function uploadFiles(files) {
@@ -470,7 +470,7 @@ function wire() {
   try {
     await refresh();
     let tab = 'overview';
-    try { tab = localStorage.getItem('kete.tab') || 'overview'; } catch { /* ignore */ }
+    try { tab = localStorage.getItem('wyrmhoard.tab') || 'overview'; } catch { /* ignore */ }
     if ($(`[data-panel="${tab}"]`)) showTab(tab);
   } catch (err) {
     $('#banners').innerHTML =

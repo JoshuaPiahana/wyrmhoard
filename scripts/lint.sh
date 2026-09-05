@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Every static check, in the order that gives the most useful failure first.
-# Run inside the api container:  ./kete lint
+# Run inside the api container:  ./hoard lint
 set -uo pipefail
 # /repo when run in the container, the repo root when run directly.
 cd /repo 2>/dev/null || cd "$(dirname "$0")/.." || exit 1
@@ -32,7 +32,7 @@ yamllint --strict . || fail=1
 
 echo
 echo "=== shellcheck ==="
-shellcheck kete scripts/*.sh || fail=1
+shellcheck hoard scripts/*.sh || fail=1
 
 echo
 if [ "$fail" -eq 0 ]; then

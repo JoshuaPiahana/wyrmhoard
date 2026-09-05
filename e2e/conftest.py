@@ -14,7 +14,7 @@ import os
 import pytest
 from playwright.sync_api import ConsoleMessage, Page
 
-BASE_URL = os.environ.get("KETE_E2E_URL", "http://web")
+BASE_URL = os.environ.get("WYRMHOARD_E2E_URL", "http://web")
 
 
 @pytest.fixture(scope="session")

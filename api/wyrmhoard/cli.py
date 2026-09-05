@@ -3,8 +3,8 @@ Command line interface.
 
 The monthly routine is meant to be two commands:
 
-    docker compose run --rm api python -m kete.cli ingest
-    docker compose run --rm api python -m kete.cli report
+    docker compose run --rm api python -m wyrmhoard.cli ingest
+    docker compose run --rm api python -m wyrmhoard.cli report
 
 Anything more elaborate than that will not survive contact with a busy month.
 """
@@ -45,7 +45,7 @@ def sample(months: int = 14) -> None:
     path = config.DATA_DIR / "samples" / "kiwibank_sample.csv"
     samples.write(path, months=months)
     console.print(f"[green]Wrote[/green] {months} months of synthetic data to {path}")
-    console.print("Import it with: [bold]python -m kete.cli ingest --sample[/bold]")
+    console.print("Import it with: [bold]python -m wyrmhoard.cli ingest --sample[/bold]")
 
 
 @app.command()

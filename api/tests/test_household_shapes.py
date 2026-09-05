@@ -23,8 +23,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kete import config
-from kete.analysis import entitlements, mortgage
+from wyrmhoard import config
+from wyrmhoard.analysis import entitlements, mortgage
 
 
 def write_household(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data: dict) -> None:
@@ -82,7 +82,7 @@ def test_renter_gets_no_mortgage_findings(tmp_path, monkeypatch):
     write_household(
         tmp_path, monkeypatch, {"household": {"country": "NZ"}, "mortgage": {"balance": None}}
     )
-    from kete import coach
+    from wyrmhoard import coach
 
     findings = coach.build_findings()
     ids = {f.id for f in findings}
@@ -188,14 +188,14 @@ def test_non_nz_disables_entitlements_cleanly(tmp_path, monkeypatch, country):
 
 def test_non_nz_gets_no_kiwisaver_finding(tmp_path, monkeypatch):
     write_household(tmp_path, monkeypatch, {"household": {"country": "GB"}})
-    from kete import coach
+    from wyrmhoard import coach
 
     assert "kiwisaver" not in {f.id for f in coach.build_findings()}
 
 
 def test_non_nz_plan_omits_the_entitlements_step(tmp_path, monkeypatch):
     write_household(tmp_path, monkeypatch, {"household": {"country": "AU"}})
-    from kete import coach
+    from wyrmhoard import coach
 
     plan = coach.build_plan()
     assert not any("entitled" in s["title"].lower() for s in plan)

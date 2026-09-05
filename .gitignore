@@ -9,7 +9,7 @@ data/samples/*.real.*
 
 # Raw source documents dropped anywhere.
 # No exceptions, not even for the synthetic sample - it is regenerable with
-# `./kete sample`, and a rule with exceptions is a rule that eventually lets
+# `./hoard sample`, and a rule with exceptions is a rule that eventually lets
 # the wrong file through.
 *.ofx
 *.qif

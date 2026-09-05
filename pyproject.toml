@@ -1,5 +1,5 @@
 [project]
-name = "kete"
+name = "wyrmhoard"
 version = "0.1.0"
 description = "Household finance, computed locally. Your bank data never leaves your machine."
 readme = "README.md"
@@ -16,7 +16,7 @@ package-dir = { "" = "api" }
 
 [tool.setuptools.packages.find]
 where = ["api"]
-include = ["kete*"]
+include = ["wyrmhoard*"]
 
 # ---------------------------------------------------------------------------
 # Ruff - linting and formatting in one tool, so there is one thing to install
@@ -59,7 +59,7 @@ ignore = [
 "api/tests/*" = ["E402", "S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["kete"]
+known-first-party = ["wyrmhoard"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -72,7 +72,7 @@ docstring-code-format = true
 # ---------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.11"
-files = ["api/kete"]
+files = ["api/wyrmhoard"]
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = false

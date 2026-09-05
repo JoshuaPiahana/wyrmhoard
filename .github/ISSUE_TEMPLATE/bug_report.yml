@@ -11,7 +11,7 @@ body:
         account numbers, balances, or screenshots showing real figures.
 
         If you need to show a data problem, reproduce it with the synthetic
-        generator (`./kete sample`) or hand-write a few fake rows in the same
+        generator (`./hoard sample`) or hand-write a few fake rows in the same
         shape. If you cannot reproduce it without real data, describe the
         shape of the problem instead and we will work it out.
 
@@ -36,7 +36,7 @@ body:
     attributes:
       label: How to reproduce
       placeholder: |
-        1. ./kete sample && ./kete ingest --sample
+        1. ./hoard sample && ./hoard ingest --sample
         2. Open the Spending tab
         3. ...
     validations:
@@ -54,5 +54,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: "`./kete logs`, or the browser console. Redact anything personal."
+      description: "`./hoard logs`, or the browser console. Redact anything personal."
       render: shell

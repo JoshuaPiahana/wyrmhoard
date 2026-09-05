@@ -22,8 +22,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kete import cache, categorise, coach, config, db
-from kete.analysis import cashflow, entitlements, recurring
+from wyrmhoard import cache, categorise, coach, config, db
+from wyrmhoard.analysis import cashflow, entitlements, recurring
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ def test_report_renders_from_an_empty_ledger(empty_ledger, tmp_path, monkeypatch
     The report is the deliverable. It must produce a real page saying there is
     nothing to show yet, rather than failing to build at all.
     """
-    from kete import report
+    from wyrmhoard import report
 
     monkeypatch.setattr(config, "REPORT_DIR", tmp_path / "reports")
     path = report.build_report(outdir=tmp_path / "reports")

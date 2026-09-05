@@ -1,9 +1,11 @@
-# kete
+# Wyrmhoard
 
-**See where your household's money actually goes, decide what to change, and
-measure whether it worked — without your bank data ever leaving your computer.**
+**Know your hoard to the last coin.**
 
-[![CI](https://github.com/JoshuaPiahana/kete/actions/workflows/ci.yml/badge.svg)](https://github.com/JoshuaPiahana/kete/actions/workflows/ci.yml)
+See where your household's money actually goes, decide what to change, and
+measure whether it worked — without your bank data ever leaving your computer.
+
+[![CI](https://github.com/JoshuaPiahana/wyrmhoard/actions/workflows/ci.yml/badge.svg)](https://github.com/JoshuaPiahana/wyrmhoard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Most budgeting apps want your bank login, sell your spending data, or stop
@@ -20,8 +22,11 @@ It answers three questions:
 It also produces a **printable report designed for a household meeting**,
 including a page written for children.
 
-> **A kete is a woven flax basket for gathering and carrying things worth
-> keeping.** That is roughly the job here.
+> **A wyrm knows its hoard to the last coin.** It does not guess, it is not
+> surprised, and nothing goes missing without being noticed. The gold is not
+> the point — knowing exactly what you have is.
+
+The project is **Wyrmhoard**; the command you type is **`./hoard`**.
 
 ---
 
@@ -55,15 +60,15 @@ appear.
 about fifteen minutes. Nothing else — no Python, no Node.
 
 > **Not comfortable with a terminal?** This README is written to be pasted
-> into an AI assistant. Try: *"I want to run the kete project on my computer.
+> into an AI assistant. Try: *"I want to run the Wyrmhoard project on my computer.
 > Here is its README. Walk me through it one step at a time, and tell me
 > exactly what to type."* Every command below is complete and safe to copy.
 
 ### 1. Get the code
 
 ```bash
-git clone https://github.com/JoshuaPiahana/kete.git
-cd kete
+git clone https://github.com/JoshuaPiahana/wyrmhoard.git
+cd wyrmhoard
 ```
 
 ### 2. Start it
@@ -81,8 +86,8 @@ saying there is no data yet — that is correct.
 Before trusting it with anything real, look at it working:
 
 ```bash
-./kete sample
-./kete ingest --sample
+./hoard sample
+./hoard ingest --sample
 ```
 
 Refresh the browser. The dashboard now shows fourteen months of **invented**
@@ -92,7 +97,7 @@ can judge the tool before feeding it your own records.
 When you have seen enough, clear it out:
 
 ```bash
-./kete reset --yes
+./hoard reset --yes
 ```
 
 ### 4. Add your own details
@@ -119,7 +124,7 @@ Drop the files onto the **Data** tab in the dashboard, or copy them into
 `data/inbox/` and run:
 
 ```bash
-./kete ingest
+./hoard ingest
 ```
 
 The tool reports what it made of each file: how many rows it read, which
@@ -144,8 +149,8 @@ Deliberately two commands. A routine with more steps does not survive a busy
 month.
 
 ```bash
-./kete ingest      # import whatever is in data/inbox/
-./kete report      # build the household meeting report
+./hoard ingest      # import whatever is in data/inbox/
+./hoard report      # build the household meeting report
 ```
 
 Then open `reports/latest.html`, sit down with it, and take a snapshot from
@@ -162,19 +167,19 @@ have to track what you already loaded.
 
 | Command | What it does |
 |---|---|
-| `./kete up` | Start the dashboard at <http://localhost:8080> |
-| `./kete down` | Stop everything |
-| `./kete ingest` | Import every CSV in `data/inbox/` |
-| `./kete ingest --sample` | Import synthetic demo data |
-| `./kete summary` | Headline numbers in the terminal |
-| `./kete review` | Biggest uncategorised spending, largest first |
-| `./kete recategorise` | Re-apply rules after editing `config/rules.yml` |
-| `./kete report` | Build the household meeting report |
-| `./kete snapshot` | Freeze this month's numbers |
-| `./kete loan` | Mortgage payoff scenarios |
-| `./kete reset --yes` | Delete the ledger (your CSV files are untouched) |
-| `./kete lint` / `test` / `e2e` / `check` | The quality gates |
-| `./kete logs` | Tail the API logs |
+| `./hoard up` | Start the dashboard at <http://localhost:8080> |
+| `./hoard down` | Stop everything |
+| `./hoard ingest` | Import every CSV in `data/inbox/` |
+| `./hoard ingest --sample` | Import synthetic demo data |
+| `./hoard summary` | Headline numbers in the terminal |
+| `./hoard review` | Biggest uncategorised spending, largest first |
+| `./hoard recategorise` | Re-apply rules after editing `config/rules.yml` |
+| `./hoard report` | Build the household meeting report |
+| `./hoard snapshot` | Freeze this month's numbers |
+| `./hoard loan` | Mortgage payoff scenarios |
+| `./hoard reset --yes` | Delete the ledger (your CSV files are untouched) |
+| `./hoard lint` / `test` / `e2e` / `check` | The quality gates |
+| `./hoard logs` | Tail the API logs |
 
 On Windows, run these from **WSL** or **Git Bash**.
 
@@ -231,7 +236,7 @@ data/
   inbox/            drop bank CSV exports here
   ledger.db         SQLite — your whole history in one backup-able file
 reports/            generated meeting reports (gitignored)
-api/kete/
+api/wyrmhoard/
   ingest/           format-sniffing CSV parser
   categorise.py     memo → category
   analysis/         cash flow, recurring payments, debt payoff, entitlements
@@ -260,7 +265,7 @@ mobile-overflow checks), and a job that follows this README's quickstart on a
 clean machine to prove the instructions still work.
 
 ```bash
-./kete check
+./hoard check
 ```
 
 ---
@@ -283,7 +288,7 @@ other countries are the most valuable things anyone could add. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Never commit financial data** — use the synthetic generator in
-`api/kete/samples.py`.
+`api/wyrmhoard/samples.py`.
 
 ## Licence
 
