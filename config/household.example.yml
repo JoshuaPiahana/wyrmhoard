@@ -1,113 +1,72 @@
 # ===========================================================================
-# household.yml - the one file that makes this tool yours.
+# household.yml - the few things no data source can tell us.
 #
 #   cp config/household.example.yml config/household.yml
 #
 # Your copy is gitignored and never leaves your machine.
 #
-# Almost everything here is optional. The tool works with an empty file - it
-# will just show you cash flow and categories. Each section you fill in
-# unlocks more: children enable the entitlements check, a mortgage enables
-# payoff maths, a declared salary sharpens the estimates.
+# This file is deliberately short. Anything that CAN be derived from your bank
+# exports or payslips IS derived, every time it is needed:
+#
+#   mortgage balance, rate, repayment, payoff  ->  from the loan account
+#   gross income, tax, KiwiSaver rates, tax code -> from payslips
+#   which account is everyday / savings / a loan -> inferred, you confirm
+#
+# None of that is stored here, because a config copy of a derived value is a
+# cache that goes stale silently. A mortgage rate typed in once is wrong at
+# the next refix, and nothing tells you.
+#
+# What is left is what only you know.
 # ===========================================================================
 
 household:
   name: "Our Household"
 
   # Gates the region-specific modules. Only NZ has an entitlements module so
-  # far; any other value simply switches that page off and leaves everything
-  # else working normally.
+  # far; any other value switches that page off and leaves everything else
+  # working normally.
   country: NZ
 
   # Optional. Used only to point you at the right rates-rebate scheme.
   council: null
 
 # ---------------------------------------------------------------------------
-# People. Optional - omit entirely if you would rather not record them.
-# `role` is one of: earner, partner, child.
+# Who lives here. Nothing else can know this, and it drives the entitlement
+# checks - which are usually the largest number this tool can find.
+#
+# `birth_date` beats `birth_year`: some entitlements turn on an exact age.
+# NZ Best Start, for one, is universal under 1 and income-tested from 1 to 3,
+# so a child near that boundary is worth getting right to the day.
+#
+# Leave the list empty if you would rather not record it. The tool will simply
+# say it cannot check entitlements, rather than guessing.
 # ---------------------------------------------------------------------------
 people: []
-
-# Example of a household with children:
-#
 # people:
 #   - name: "Sam"
-#     role: earner
-#     birth_year: 1988
-#   - name: "Alex"
-#     role: partner
-#     birth_year: 1990
+#     role: earner          # earner | partner | child
+#     birth_date: 1988-03-14
 #   - name: "Riley"
 #     role: child
-#     birth_date: 2019-04-12   # exact date is better than birth_year -
-#                              # some entitlements turn on the precise age
+#     birth_date: 2019-04-12
 
 # ---------------------------------------------------------------------------
-# Income. Two shapes are accepted.
+# Income that should NOT be planned around.
 #
-#   income.primary   - a single mapping, for one earner
-#   income.earners   - a list, for two or more
-#
-# Anything irregular belongs under `upside`, where it is treated as a windfall:
-# it can accelerate a goal, but the budget is never built on it.
+# Payslips supply the actual earnings. This is the judgement call a payslip
+# cannot make: which income is irregular enough that the budget must survive
+# without it. Anything listed here can accelerate a goal, but is never treated
+# as something to rely on.
 # ---------------------------------------------------------------------------
-income:
-  primary:
-    label: "Main job"
-    gross_annual: null        # from a payslip; null = infer from bank deposits
-    pay_cycle: fortnightly    # weekly | fortnightly | monthly
-    kiwisaver_employee_pct: 0 # NZ only; ignore elsewhere
-    kiwisaver_employer_pct: 0
-    has_student_loan: false
-
-  # Two-income version - delete `primary` above and uncomment this instead:
-  #
-  # earners:
-  #   - label: "Sam - full time"
-  #     gross_annual: 78000
-  #     pay_cycle: fortnightly
-  #     kiwisaver_employee_pct: 3
-  #   - label: "Alex - part time"
-  #     gross_annual: 32000
-  #     pay_cycle: weekly
-  #     kiwisaver_employee_pct: 3
-
-  upside: []
-  # upside:
-  #   - label: "Occasional weekend work"
-  #     treat_as: windfall
+upside: []
+# upside:
+#   - label: "Occasional weekend work"
+#   - label: "Annual bonus, not guaranteed"
 
 # ---------------------------------------------------------------------------
-# Accounts. Helps the tool understand what it is looking at, and supplies an
-# opening balance when your export has no running-balance column.
-# ---------------------------------------------------------------------------
-accounts:
-  - label: "Everyday"
-    kind: transaction         # transaction | savings | mortgage | credit
-    bank: kiwibank
-  - label: "Savings"
-    kind: savings
-    bank: kiwibank
-    opening_balance: null
-
-# ---------------------------------------------------------------------------
-# Mortgage. Leave `balance` as null or 0 if you rent, or have paid it off -
-# the tool then skips every mortgage finding rather than nagging you about a
-# loan you do not have.
-# ---------------------------------------------------------------------------
-mortgage:
-  balance: null
-  property: null
-  interest_rate_pct: null
-  fixed_until: null           # YYYY-MM-DD - drives a refix reminder
-  repayment: null
-  repayment_frequency: fortnightly
-  term_remaining_years: null
-
-# ---------------------------------------------------------------------------
-# Goals. The ladder the coach walks you up. Order matters more than content:
-# a buffer before debt repayment is deliberate, because the alternative to a
-# buffer is borrowing at a worse rate the first time something breaks.
+# The ladder the coach walks you up. Order matters more than content: a buffer
+# before debt repayment is deliberate, because the alternative to a buffer is
+# borrowing at a worse rate the first time something breaks.
 #
 # `target: null` means "work it out from my actual spending".
 # ---------------------------------------------------------------------------
@@ -134,3 +93,13 @@ settings:
   # death-by-a-thousand-cuts number that budgets usually miss entirely.
   small_transaction_threshold: 20
   family_meeting_day: "first Sunday"
+
+# ---------------------------------------------------------------------------
+# Overrides. Only for correcting something the tool derived wrongly - never as
+# the normal way to supply a value. If you find yourself needing these often,
+# the inference is what should be fixed.
+# ---------------------------------------------------------------------------
+overrides: {}
+# overrides:
+#   accounts:
+#     "38-9014-0123456-05": liability

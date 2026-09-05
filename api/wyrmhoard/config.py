@@ -121,7 +121,27 @@ class Household:
 
     @property
     def income(self) -> dict[str, Any]:
+        """
+        Legacy income block.
+
+        Income now comes from payslips, which state it exactly. This remains
+        only so an older household.yml keeps working, and as a fallback for
+        anyone who has not imported a payslip yet.
+        """
         return self.raw.get("income", {}) or {}
+
+    @property
+    def upside(self) -> list[dict[str, Any]]:
+        """
+        Income the budget must survive without.
+
+        The one judgement a payslip cannot make: it reports what irregular
+        work paid, but not whether the household should count on it.
+        """
+        listed = self.raw.get("upside")
+        if isinstance(listed, list):
+            return [u for u in listed if isinstance(u, dict)]
+        return (self.income.get("upside") or []) if self.income else []
 
     @property
     def earners(self) -> list[dict[str, Any]]:

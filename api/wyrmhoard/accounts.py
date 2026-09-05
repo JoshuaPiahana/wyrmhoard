@@ -46,13 +46,20 @@ _NEGATIVE_SHARE_FOR_LIABILITY = 0.9
 
 
 def _config_roles() -> dict[str, str]:
-    """Roles declared in household.yml, keyed by account number where given."""
+    """
+    Roles a human pinned in household.yml under `overrides.accounts`.
+
+    Only for correcting a wrong guess. Roles are inferred from the data by
+    default, so this should stay empty for most households - and if it does
+    not, the inference is what needs fixing.
+    """
+    raw = config.household().raw
+    declared = (raw.get("overrides") or {}).get("accounts") or {}
     out: dict[str, str] = {}
-    for acct in config.household().raw.get("accounts", []) or []:
-        number = str(acct.get("number") or "").strip()
-        role = KIND_TO_ROLE.get(str(acct.get("kind") or "").lower())
-        if number and role:
-            out[number] = role
+    for number, role in declared.items():
+        mapped = KIND_TO_ROLE.get(str(role).lower(), str(role).lower())
+        if mapped in ROLES:
+            out[str(number).strip()] = mapped
     return out
 
 
@@ -230,8 +237,12 @@ def own_accounts() -> set[str]:
     them. Used to recognise internal transfers, where the counterparty is one
     of these rather than a shop or an employer.
     """
+    raw = config.household().raw
     known = set(roles())
-    for acct in config.household().raw.get("accounts", []) or []:
+    known |= {str(n).strip() for n in ((raw.get("overrides") or {}).get("accounts") or {})}
+    # The older `accounts:` list is still honoured, and remains the only way
+    # to name an account the household holds but has not exported yet.
+    for acct in raw.get("accounts", []) or []:
         number = str(acct.get("number") or "").strip()
         if number:
             known.add(number)

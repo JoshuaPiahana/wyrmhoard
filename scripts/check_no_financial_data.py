@@ -52,6 +52,7 @@ ALLOWED_ACCOUNTS = {
     "38-9014-0123456-00",
     "38-9014-0000000-01",
     "38-9014-0000000-05",
+    "38-9014-0123456-05",
     # Accounts that are deliberately NOT the household's, for testing that
     # foreign counterparties are not treated as internal transfers. Never use
     # a real employer's or bank's account number here: the guard blocked a

@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from . import cache, config
-from .analysis import cashflow, entitlements, mortgage, recurring
+from .analysis import cashflow, entitlements, income, mortgage, recurring
 
 # Severity drives ordering in the report.
 SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "win": 4}
@@ -356,9 +356,13 @@ def build_findings() -> list[Finding]:
         )
 
     # ---- 10. KiwiSaver ------------------------------------------------------
+    # Payslips are authoritative here: they state the actual contribution, so
+    # a household with one imported is never asked whether they contribute.
     ks = next((c for c in cats if c["category"] == "kiwisaver"), None)
-    earners = hh.earners
-    contributing = any((e.get("kiwisaver_employee_pct") or 0) > 0 for e in earners)
+    payslip_income = income.from_payslips()
+    contributing = any(
+        (job.get("kiwisaver_ee") or 0) != 0 for job in payslip_income.get("jobs", [])
+    ) or any((e.get("kiwisaver_employee_pct") or 0) > 0 for e in hh.earners)
     if hh.region_supported and not contributing and not ks:
         ks_block = rt.block("kiwisaver")
         out.append(
