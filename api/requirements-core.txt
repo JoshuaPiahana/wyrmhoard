@@ -8,13 +8,13 @@
 #
 # A test enforces this: `test_layering.py` fails if any core module imports an
 # interface-only package.
-pandas==2.2.3
-PyYAML==6.0.2
+pandas==3.0.5
+PyYAML==6.0.3
 python-dateutil==2.9.0.post0
 
 # Payslip PDFs. Part of ingest, so part of the core.
-pdfplumber==0.11.5
+pdfplumber==0.11.10
 
 # The household meeting report is a core deliverable, produced by the CLI as
 # well as the web app, so its template engine belongs here.
-Jinja2==3.1.5
+Jinja2==3.1.6
