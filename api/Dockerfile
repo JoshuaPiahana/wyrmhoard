@@ -14,7 +14,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt .
+# All five layer files, because requirements.txt is only a set of -r includes
+# and pip resolves those relative to it. Copied before the source so a code
+# change does not invalidate the dependency layer.
+COPY requirements*.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY wyrmhoard ./wyrmhoard

@@ -1,0 +1,20 @@
+# The core: storage, ingest, analysis, coaching, the household report.
+#
+# Everything needed to turn a household's records into figures - and nothing
+# else. No web framework, no agent protocol, no CLI toolkit. Somebody
+# embedding Wyrmhoard's analysis in their own program should not have to
+# install a web server to compute a number, and the project's whole premise is
+# that the web app is one interface among several rather than the product.
+#
+# A test enforces this: `test_layering.py` fails if any core module imports an
+# interface-only package.
+pandas==2.2.3
+PyYAML==6.0.2
+python-dateutil==2.9.0.post0
+
+# Payslip PDFs. Part of ingest, so part of the core.
+pdfplumber==0.11.5
+
+# The household meeting report is a core deliverable, produced by the CLI as
+# well as the web app, so its template engine belongs here.
+Jinja2==3.1.5

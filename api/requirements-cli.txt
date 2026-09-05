@@ -1,0 +1,11 @@
+# The terminal interface.
+#
+# click is pinned deliberately: typer 0.15 calls click's
+# Parameter.make_metavar() without the ctx argument that click 8.2 made
+# mandatory, so an unpinned click breaks every command with
+#   TypeError: make_metavar() missing 1 required positional argument: 'ctx'
+# It only shows up on a fresh install, which is why an image built before
+# click 8.2 shipped kept working while a new clone did not.
+typer==0.15.1
+click==8.1.8
+rich==13.9.4

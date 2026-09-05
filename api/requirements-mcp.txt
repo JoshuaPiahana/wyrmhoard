@@ -1,0 +1,6 @@
+# Model Context Protocol - how an AI agent drives this tool.
+#
+# Kept separate because plenty of people will never use it, and because the
+# core must not depend on it. See requirements-web.txt for the FastAPI/starlette
+# constraint this version imposes.
+mcp==2.1.1

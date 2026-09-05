@@ -7,6 +7,23 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 keywords = ["personal-finance", "budgeting", "self-hosted", "privacy"]
 
+# Read from the requirements files rather than duplicated here, so every pin
+# is declared exactly once and Docker can still cache a dependency layer
+# without the source tree present.
+#
+#   pip install .              -> the analysis engine alone, no web framework
+#   pip install ".[web]"       -> plus the HTTP API and dashboard
+#   pip install ".[mcp]"       -> plus the agent interface
+#   pip install ".[cli]"       -> plus the terminal commands
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["api/requirements-core.txt"] }
+optional-dependencies.cli = { file = ["api/requirements-cli.txt"] }
+optional-dependencies.web = { file = ["api/requirements-web.txt"] }
+optional-dependencies.mcp = { file = ["api/requirements-mcp.txt"] }
+optional-dependencies.dev = { file = ["api/requirements-dev.txt"] }
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

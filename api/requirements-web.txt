@@ -1,0 +1,9 @@
+# The HTTP API and the dashboard it serves.
+#
+# Note the FastAPI floor: mcp 2.x requires starlette 1.x, which FastAPI only
+# accepts from 0.14x. Downgrading either breaks the other, so if you pin these
+# down, check `pip check` afterwards.
+fastapi==0.141.1
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.13.5
