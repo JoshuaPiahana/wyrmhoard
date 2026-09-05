@@ -96,6 +96,16 @@ def setup_state() -> dict[str, Any]:
                 "why": "Below 90% the category charts are decorative rather than useful.",
             }
         )
+    for gap in accounts.likely_missing_accounts()[:2]:
+        todo.append(
+            {
+                "id": "missing_account",
+                "label": f"Import {gap['account']} — {gap['transfers']} transfers in, "
+                f"${gap['total']:,.0f}",
+                "why": "Money arrives regularly from this account, so income and "
+                "entitlement figures are only part of the picture until it is included.",
+            }
+        )
     if rt.unverified_blocks:
         todo.append(
             {
@@ -335,6 +345,75 @@ def import_inbox() -> dict[str, Any]:
 
     reports = [r.as_dict() for r in ingest_inbox(config.DATA_DIR / "inbox")]
     return {"reports": reports, "coverage": categorise.recategorise_all()}
+
+
+# --------------------------------------------------------------------------
+# Data management
+# --------------------------------------------------------------------------
+@app.get("/imports")
+def list_imports() -> list[dict[str, Any]]:
+    """Every file imported, and how much of it is still in the ledger."""
+    return db.imports()
+
+
+@app.delete("/imports/{filename}")
+def undo_import(filename: str) -> dict[str, Any]:
+    """
+    Lift one import back out - the wrong export, a duplicate, somebody else's
+    account. Everything else stays exactly as it was.
+    """
+    safe = safe_upload_name(filename)
+    known = {i["filename"] for i in db.imports()}
+    if safe not in known:
+        raise HTTPException(404, f"No import named '{safe}'.")
+
+    result = db.delete_import(safe)
+    cache.clear_all()
+    result["coverage"] = categorise.recategorise_all()
+    return result
+
+
+@app.get("/backups")
+def list_backups() -> dict[str, Any]:
+    return {
+        "backups": db.list_backups(config.DATA_DIR / "backups"),
+        "location": str(config.DATA_DIR / "backups"),
+    }
+
+
+@app.post("/backups")
+def make_backup() -> dict[str, Any]:
+    """
+    Snapshot the ledger.
+
+    This is the whole financial history in one file. Copy it somewhere off
+    this machine too - a backup that only exists on the disk that failed is
+    not a backup.
+    """
+    path = db.backup(config.DATA_DIR / "backups")
+    return {
+        "created": path.name,
+        "path": str(path),
+        "size_kb": round(path.stat().st_size / 1024, 1),
+    }
+
+
+class RestoreRequest(BaseModel):
+    name: str
+
+
+@app.post("/backups/restore")
+def restore_backup(req: RestoreRequest) -> dict[str, Any]:
+    """Replace the ledger with a backup. The displaced one is saved first."""
+    backups_dir = (config.DATA_DIR / "backups").resolve()
+    target = (backups_dir / safe_upload_name(req.name)).resolve()
+    if not target.is_relative_to(backups_dir) or not target.exists():
+        raise HTTPException(404, f"No backup named '{req.name}'.")
+
+    result = db.restore(target)
+    cache.clear_all()
+    result["coverage"] = categorise.recategorise_all()
+    return result
 
 
 # --------------------------------------------------------------------------

@@ -51,7 +51,7 @@ ignore = [
     # Dates here are deliberately naive local dates. A household's "today" is
     # the day on their kitchen calendar, not a UTC instant, and the container
     # is pinned to the household's timezone for exactly that reason.
-    "DTZ001", "DTZ005", "DTZ007", "DTZ011",
+    "DTZ001", "DTZ005", "DTZ006", "DTZ007", "DTZ011",
 ]
 
 [tool.ruff.lint.per-file-ignores]

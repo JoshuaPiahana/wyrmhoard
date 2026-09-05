@@ -245,6 +245,75 @@ const RENDER = {
       </tr>`).join('');
   },
 
+  imports: el => {
+    const rows = state.imports || [];
+    if (!rows.length) {
+      el.innerHTML = '<tr><td colspan="5" class="muted">Nothing imported yet.</td></tr>';
+      return;
+    }
+    el.innerHTML = rows.map((r, i) => `
+      <tr>
+        <td>${esc(r.filename)}</td>
+        <td class="n">${r.present ?? 0}</td>
+        <td class="muted">${r.first_date ? `${esc(r.first_date)} → ${esc(r.last_date)}` : '—'}</td>
+        <td class="muted">${esc(String(r.imported_at || '').slice(0, 10))}</td>
+        <td><button class="btn" data-undo="${i}">Undo</button></td>
+      </tr>`).join('');
+
+    $$('button[data-undo]', el).forEach(btn => {
+      btn.addEventListener('click', async ev => {
+        const el2 = ev.currentTarget;
+        const row = rows[Number(el2.dataset.undo)];
+        // Deleting transactions is not recoverable from inside the app, so it
+        // asks first and says exactly how much will go.
+        if (!window.confirm(
+          `Remove ${row.present} transactions imported from ${row.filename}?\n\n`
+          + 'The CSV file itself is not deleted, so you can re-import it.')) return;
+        el2.disabled = true;
+        try {
+          await api(`/imports/${encodeURIComponent(row.filename)}`, { method: 'DELETE' });
+        } finally {
+          await refresh();
+        }
+      });
+    });
+  },
+
+  backups: el => {
+    const rows = state.backups || [];
+    if (!rows.length) {
+      el.innerHTML = '<tr><td colspan="4" class="muted">No backups yet.</td></tr>';
+      return;
+    }
+    el.innerHTML = rows.map((b, i) => `
+      <tr>
+        <td>${esc(b.name)}</td>
+        <td class="n">${b.size_kb} KB</td>
+        <td class="muted">${esc(String(b.taken_at).replace('T', ' '))}</td>
+        <td><button class="btn" data-restore="${i}">Restore</button></td>
+      </tr>`).join('');
+
+    $$('button[data-restore]', el).forEach(btn => {
+      btn.addEventListener('click', async ev => {
+        const el2 = ev.currentTarget;
+        const b = rows[Number(el2.dataset.restore)];
+        if (!window.confirm(
+          `Replace the current ledger with ${b.name}?\n\n`
+          + 'The ledger being replaced is backed up first, so this is reversible.')) return;
+        el2.disabled = true;
+        try {
+          await api('/backups/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: b.name }),
+          });
+        } finally {
+          await refresh();
+        }
+      });
+    });
+  },
+
   loans: el => {
     const rows = state.loans || [];
     if (!rows.length) {
@@ -452,15 +521,18 @@ function renderBanners() {
 
 async function refresh() {
   const [setup, summary, coach, recurring, entitlements, mortgage,
-         snapshots, unknowns, rules, accounts, loans] = await Promise.all([
+         snapshots, unknowns, rules, accounts, loans, imports, backups] = await Promise.all([
     api('/setup'), api('/summary'), api('/coach'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
+    api('/imports'), api('/backups'),
   ]);
 
   Object.assign(state, {
     setup, summary, coach, recurring, entitlements, mortgage, snapshots, unknowns,
-    accounts, loans,
+    accounts, loans, imports,
+    backups: backups.backups,
+    backupLocation: `Backups are written to ${backups.location} — inside your data folder, so copy them elsewhere too.`,
     household: { name: setup.household_name },
     headline: null,
   });
@@ -566,6 +638,21 @@ function wire() {
       });
       $('#snap-note').value = '';
       await refresh();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#btn-backup').addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    $('#backup-status').innerHTML = '<span class="spinner"></span> Backing up…';
+    try {
+      const r = await api('/backups', { method: 'POST' });
+      $('#backup-status').textContent = `Saved ${r.created} (${r.size_kb} KB)`;
+      await refresh();
+    } catch (err) {
+      $('#backup-status').textContent = err.message;
     } finally {
       btn.disabled = false;
     }

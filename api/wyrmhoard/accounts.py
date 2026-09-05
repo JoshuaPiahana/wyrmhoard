@@ -158,6 +158,72 @@ def liability_accounts() -> set[str]:
     return accounts_with_role("liability")
 
 
+# Enough repeat transfers that this is a standing arrangement rather than
+# somebody paying you back for a coffee.
+_MIN_TRANSFERS_TO_SUSPECT = 6
+
+
+@cache.by_ledger
+def likely_missing_accounts() -> list[dict[str, Any]]:
+    """
+    External accounts that behave like part of this household.
+
+    Money arriving from the same outside account, over and over, is usually a
+    partner moving their income across, or a second account the household
+    holds but has not exported yet.
+
+    This matters more than it sounds. The tool reports what it can see and
+    calls that the household's income. If a partner's account holds the family
+    tax credits and only transfers some across, the tool will confidently
+    report those credits as missing - which is worse than saying nothing,
+    because somebody could act on it and ring IRD about money they already
+    receive.
+
+    So: notice the gap, and say so, rather than drawing a confident conclusion
+    over a hole in the data.
+    """
+    from .analysis.cashflow import frame
+
+    df = frame()
+    if df.empty or "counterparty" not in df.columns:
+        return []
+
+    known = own_accounts()
+    incoming = df[(df["amount"] > 0) & df["counterparty"].notna()]
+
+    out: list[dict[str, Any]] = []
+    for counterparty, chunk in incoming.groupby("counterparty"):
+        account = str(counterparty).strip()
+        if not account or account in known or account.replace("-", "") in known:
+            continue
+        if len(chunk) < _MIN_TRANSFERS_TO_SUSPECT:
+            continue
+
+        # A salary or a benefit comes from an organisation, not a household
+        # account, so those are not gaps in our view of the household.
+        text = " ".join(str(m).upper() for m in chunk["memo"].head(20))
+        if any(word in text for word in ("SALARY", "WAGE", "PAYROLL", "INLAND REVENUE")):
+            continue
+
+        out.append(
+            {
+                "account": account,
+                "transfers": int(len(chunk)),
+                "total": round(float(chunk["amount"].sum()), 2),
+                "first_seen": chunk["date"].min().date().isoformat(),
+                "last_seen": chunk["date"].max().date().isoformat(),
+                "example": str(chunk.iloc[-1]["memo"])[:80],
+            }
+        )
+
+    return sorted(out, key=lambda a: a["transfers"], reverse=True)
+
+
+def view_is_incomplete() -> bool:
+    """True when money clearly arrives from a household account we cannot see."""
+    return bool(likely_missing_accounts())
+
+
 def own_accounts() -> set[str]:
     """
     Every account belonging to this household, in every form the bank writes

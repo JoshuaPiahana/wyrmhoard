@@ -25,7 +25,7 @@
 <header class="topbar">
   <div class="brand">
     <span class="mark">W</span>
-    <span>Wyrmhoard <small data-bind="household.name">—</small></span>
+    <span>Wyrmhoard</span>
   </div>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="overview"     aria-selected="true">Overview</button>
@@ -352,6 +352,41 @@
           <thead><tr><th>Memo</th><th class="n">Count</th><th class="n">Total</th><th>Set category</th></tr></thead>
           <tbody data-list="unknowns"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>What you've imported</h2>
+        <span class="hint">Undo any of these — the wrong export, a duplicate, someone else's account. Nothing else is touched.</span>
+      </div>
+      <div class="card tablewrap" tabindex="0">
+        <table>
+          <thead>
+            <tr><th>File</th><th class="n">In ledger</th><th>Covering</th><th>Imported</th><th></th></tr>
+          </thead>
+          <tbody data-list="imports"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Backups</h2>
+        <span class="hint">Your whole financial history is one file. Copy it off this machine too.</span>
+      </div>
+      <div class="card">
+        <div class="row">
+          <button class="btn primary" id="btn-backup">Back up now</button>
+          <span id="backup-status" class="muted"></span>
+        </div>
+        <div class="tablewrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Backup</th><th class="n">Size</th><th>Taken</th><th></th></tr></thead>
+            <tbody data-list="backups"></tbody>
+          </table>
+        </div>
+        <p class="muted" data-bind="backupLocation"></p>
       </div>
     </section>
 

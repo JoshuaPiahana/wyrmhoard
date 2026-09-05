@@ -256,7 +256,32 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
         result["received_annualised"] = round(received, 2)
         result["gap"] = round(gap, 2)
 
-        if not obs["receiving_anything"] and total > 500:
+        # If money clearly arrives from a household account we have not been
+        # given, entitlements may well be landing there. Saying "you are
+        # missing out" would then be a confident conclusion drawn over a known
+        # hole in the data - and somebody could act on it.
+        from .. import accounts as accounts_mod
+
+        missing = accounts_mod.likely_missing_accounts()
+        result["missing_accounts"] = missing
+        result["view_is_incomplete"] = bool(missing)
+
+        if missing:
+            where = missing[0]["account"]
+            result["headline"] = (
+                f"This cannot be answered from the accounts imported so far. "
+                f"Money arrives regularly from {where}, which is not among them - "
+                f"so any family payments going into that account are invisible "
+                f"here, and the ${received:,.0f} a year showing from IRD may "
+                f"be only part of what the household receives."
+            )
+            result["severity"] = "low"
+            result["caveats"].insert(
+                0,
+                "Import the missing account before drawing any conclusion from "
+                "this page, or confirm directly with IRD.",
+            )
+        elif not obs["receiving_anything"] and total > 500:
             result["headline"] = (
                 f"No payments from IRD or Work and Income appear in the last "
                 f"12 months of bank data, but a household with {n_children} "

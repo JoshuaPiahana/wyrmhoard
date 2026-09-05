@@ -223,6 +223,121 @@ def insert_transactions(rows: Iterable[dict[str, Any]], source_file: str) -> int
 
 
 # --------------------------------------------------------------------------
+# Data management
+#
+# A household must be able to undo a mistake without starting again. Every
+# transaction records the file it came from, so an import that turns out to be
+# the wrong export, a duplicate, or somebody else's account can be lifted back
+# out cleanly.
+# --------------------------------------------------------------------------
+def imports() -> list[dict[str, Any]]:
+    """Every file imported, with how many of its rows are still in the ledger."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT il.filename,
+                      il.file_sha256,
+                      il.rows_seen,
+                      il.rows_new,
+                      il.imported_at,
+                      il.parser,
+                      COUNT(t.fingerprint) AS present,
+                      MIN(t.date)          AS first_date,
+                      MAX(t.date)          AS last_date
+               FROM import_log il
+               LEFT JOIN transactions t ON t.source_file = il.filename
+               GROUP BY il.file_sha256
+               ORDER BY il.imported_at DESC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_import(filename: str) -> dict[str, Any]:
+    """
+    Remove every transaction that came from one file, and forget the file.
+
+    Overrides for those transactions go too: keeping a correction attached to
+    a fingerprint that no longer exists would silently reapply itself if the
+    same file were imported again later, which is a surprising way for an old
+    decision to come back.
+    """
+    with connect() as conn:
+        fingerprints = [
+            r["fingerprint"]
+            for r in conn.execute(
+                "SELECT fingerprint FROM transactions WHERE source_file = ?", (filename,)
+            )
+        ]
+        conn.executemany(
+            "DELETE FROM overrides WHERE fingerprint = ?", [(f,) for f in fingerprints]
+        )
+        conn.execute("DELETE FROM transactions WHERE source_file = ?", (filename,))
+        conn.execute("DELETE FROM import_log WHERE filename = ?", (filename,))
+    return {"filename": filename, "removed": len(fingerprints)}
+
+
+def backup(dest_dir: Path) -> Path:
+    """
+    Copy the ledger to a timestamped file.
+
+    Uses SQLite's own backup API rather than copying bytes: the database runs
+    in WAL mode, so a plain file copy taken mid-write can land a torn or
+    incomplete database, and the household would not find out until the day
+    they needed it.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    dest = dest_dir / f"ledger-{stamp}.db"
+
+    with connect() as source, sqlite3.connect(dest) as target:
+        source.backup(target)
+    return dest
+
+
+def restore(backup_path: Path) -> dict[str, Any]:
+    """
+    Replace the ledger with a backup, keeping a copy of what was there.
+
+    The displaced ledger is never simply deleted - restoring the wrong file is
+    exactly the kind of mistake somebody makes once, at speed, and it should
+    not be the end of their history.
+    """
+    if not backup_path.exists():
+        raise FileNotFoundError(backup_path)
+
+    with sqlite3.connect(backup_path) as probe:
+        count = probe.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+
+    superseded = None
+    if DB_PATH.exists():
+        superseded = backup(DB_PATH.parent / "backups")
+
+    with sqlite3.connect(backup_path) as source, connect() as target:
+        source.backup(target)
+
+    return {
+        "restored_from": str(backup_path),
+        "transactions": int(count),
+        "previous_ledger_saved_to": str(superseded) if superseded else None,
+    }
+
+
+def list_backups(dest_dir: Path) -> list[dict[str, Any]]:
+    if not dest_dir.exists():
+        return []
+    out = []
+    for path in sorted(dest_dir.glob("ledger-*.db"), reverse=True):
+        stat = path.stat()
+        out.append(
+            {
+                "name": path.name,
+                "size_kb": round(stat.st_size / 1024, 1),
+                "taken_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            }
+        )
+    return out
+
+
+# --------------------------------------------------------------------------
 # Account roles
 # --------------------------------------------------------------------------
 def set_account_role(
