@@ -10,6 +10,13 @@ Jinja2==3.1.5
 python-dateutil==2.9.0.post0
 pdfplumber==0.11.5
 typer==0.15.1
+# Pinned deliberately. typer 0.15 calls click's Parameter.make_metavar()
+# without a ctx argument, which click 8.2 made mandatory - so an unpinned
+# click silently breaks every CLI command with:
+#   TypeError: make_metavar() missing 1 required positional argument: 'ctx'
+# It only shows up on a fresh install, which is why an image built before
+# click 8.2 kept working while a new clone did not.
+click==8.1.8
 rich==13.9.4
 
 # Development tooling, kept in the same image on purpose. One image that
