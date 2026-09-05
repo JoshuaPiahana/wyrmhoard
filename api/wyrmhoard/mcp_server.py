@@ -458,10 +458,40 @@ def list_transactions(
 
 
 def main() -> None:
-    """Run over stdio, which keeps the transport off the network entirely."""
+    """
+    Start the server on whichever transport the caller asked for.
+
+    stdio is the default and the safest: the agent spawns this process and
+    talks to it down a pipe, so nothing listens anywhere and the transport
+    cannot be reached by anything else on the machine.
+
+    streamable-http exists because some clients cannot spawn a process at all.
+    Claude Desktop on Windows, for one, runs its MCP servers in a sandbox that
+    cannot see a Docker installation living inside WSL - there is simply
+    nothing for it to launch. Those clients connect to a URL instead.
+
+    The HTTP listener binds 0.0.0.0 INSIDE the container because that is the
+    only way Docker can map a port to it. Exposure is controlled where it
+    belongs, in compose, which publishes it on 127.0.0.1 only - the same
+    arrangement the web API already uses. Nothing is reachable from the
+    network.
+    """
+    import os
+
     config.ensure_dirs()
     db.init()
-    server.run()
+
+    transport = os.environ.get("WYRMHOARD_MCP_TRANSPORT", "stdio")
+    if transport == "stdio":
+        server.run()
+        return
+
+    port = int(os.environ.get("WYRMHOARD_MCP_PORT", "8787"))
+    server.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=port,
+    )
 
 
 if __name__ == "__main__":

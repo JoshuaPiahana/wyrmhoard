@@ -47,6 +47,14 @@ case "$cmd" in
     exit "$rc"
     ;;
   fmt)      docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo api sh -c "ruff check --fix . ; ruff format ." ;;
+  mcp-http)
+    docker compose --profile mcp-http up -d mcp-http
+    echo "MCP server on http://localhost:8787/mcp (this machine only)"
+    ;;
+  mcp-http-stop)
+    docker compose --profile mcp-http down
+    ;;
+
   e2e)
     # Its own project name, its own throwaway data volumes, no host ports.
     # The tests must never be able to reach the household's real ledger.
@@ -87,7 +95,7 @@ Wyrmhoard - household finance
   ./hoard test               unit and integration tests
   ./hoard e2e                browser tests against the running stack
   ./hoard check              all of the above, in the order CI runs them
-  ./hoard build              rebuild the image after changing requirements.txt
+  ./hoard build              rebuild the image after changing dependencies
 
 The monthly routine is:   ./hoard ingest && ./hoard report
 USAGE

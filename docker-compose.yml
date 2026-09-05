@@ -71,6 +71,35 @@ services:
     stdin_open: true
     command: python -m wyrmhoard.mcp_server
 
+  # The same MCP server over HTTP, for clients that cannot spawn a process -
+  # Claude Desktop on Windows runs its servers in a sandbox that cannot see a
+  # Docker installation inside WSL, so there is nothing for it to launch.
+  #
+  #   ./hoard mcp-http     then connect to http://localhost:8787/mcp
+  #
+  # Published on 127.0.0.1 only, exactly like the web API: reachable from this
+  # machine, invisible to the network.
+  mcp-http:
+    profiles: ["mcp-http"]
+    build: ./api
+    container_name: wyrmhoard-mcp
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./api/wyrmhoard:/app/wyrmhoard
+      - ./config:/config
+      - ./data:/data
+      - ./reports:/reports
+    environment:
+      WYRMHOARD_CONFIG_DIR: /config
+      WYRMHOARD_DATA_DIR: /data
+      WYRMHOARD_REPORT_DIR: /reports
+      WYRMHOARD_MCP_TRANSPORT: streamable-http
+      WYRMHOARD_MCP_PORT: "8787"
+      TZ: Pacific/Auckland
+    restart: unless-stopped
+    command: python -m wyrmhoard.mcp_server
+
   # JavaScript linting. Behind a profile, and Node exists only for this - the
   # dashboard itself has no build step and no dependencies. Running it through
   # a container rather than requiring Node on the host keeps the promise that
