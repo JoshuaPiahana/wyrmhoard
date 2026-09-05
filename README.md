@@ -270,6 +270,46 @@ on a clean machine to prove the instructions still work.
 
 ---
 
+## Driving it with an AI
+
+Wyrmhoard computes; interpreting the figures is somebody else's job. A
+language model is far better than any dashboard at open-ended questions —
+*"what if I went to four days a week?"* — and far worse at summing three
+thousand transactions without drifting. So it exposes exact figures and
+refuses to guess, and an agent does the reasoning.
+
+It speaks **[MCP](https://modelcontextprotocol.io)** over stdio, so nothing
+listens on a port and the transport never touches the network. Point an agent
+at it with:
+
+```bash
+docker compose -f /absolute/path/to/docker-compose.yml run --rm -T mcp
+```
+
+For Claude Desktop, that goes in `claude_desktop_config.json` as the `command`
+and `args` of an MCP server entry.
+
+**Summaries by default.** An agent answering "can we afford a holiday?" gets a
+three-kilobyte summary, not three thousand rows naming every shop you visited.
+On a real two-year ledger that is **154× less data** than the raw records —
+and `list_transactions` is the only tool that returns them at all, with a
+description telling the model to avoid it. Minimisation is built into which
+tools exist, not left to a policy somebody has to remember.
+
+**Every figure carries its provenance** — the window it covers, how it was
+derived, how much of the data is understood. A model cannot caveat what it was
+not told.
+
+**`describe_data_gaps` is a first-class tool**, and the server's instructions
+tell agents to call it before drawing conclusions. It reports accounts money
+arrives from that were never imported, spending it could not categorise, and
+rate constants nobody has verified. This exists because the tool once told a
+household they were missing family tax credits that were simply arriving in an
+account it had not been given.
+
+You also get **OpenAPI free** at `/openapi.json` if your agent framework
+prefers that.
+
 ## Where this is going
 
 The tool is useful with zero input and gets more useful with each detail you

@@ -5,6 +5,50 @@ change or never happen. Contributions toward any of it are welcome.
 
 ---
 
+## The organising principle: compute here, interpret elsewhere
+
+**Wyrmhoard's job is to turn a household's raw records into figures that are
+exact, reproducible and honest about their own uncertainty. Interpreting those
+figures is somebody else's job — a person, or increasingly an AI.**
+
+This is a deliberate division of labour rather than a limitation. A language
+model is far better than any dashboard at open-ended questions — *"what if I
+went to four days a week?"*, *"how does our spending compare to how we felt
+that month?"* — and far worse at summing three thousand transactions without
+drifting. So the tool does the arithmetic and refuses to guess; the model does
+the reasoning and the prose.
+
+What this means in practice:
+
+- **The output is the product.** A clean, well-described, machine-readable
+  contract matters more than any chart. Visualisation is a convenience for
+  people who want one, not the point.
+- **Summaries by default, raw data on request.** An agent answering "can we
+  afford a holiday?" needs a two-kilobyte summary, not three thousand rows
+  carrying every merchant a family visited. Data minimisation belongs in the
+  interface design, not in a policy somebody has to remember.
+- **Every number travels with its provenance.** Units, the window it covers,
+  how it was derived, and how confident the tool is. An interpreting model
+  cannot caveat what it was not told, and an uncaveated estimate is how
+  somebody ends up ringing IRD about money they already receive.
+- **Someone may never open the web app at all.** That has to be a first-class
+  way to use this, not a degraded one.
+
+### The standard to build against
+
+**MCP (Model Context Protocol)** is the interoperability standard here —
+originally from Anthropic, since adopted across OpenAI, Google DeepMind and
+Microsoft, so it is not a single-vendor bet. It defines tools (callable
+functions with schemas), resources (readable data) and prompts (reusable
+templates). Tool *descriptions* are how a model learns to drive an app, so
+they are documentation for a reader who cannot ask a follow-up question.
+
+**OpenAPI comes free** — FastAPI already publishes it at `/openapi.json`, and
+many agent frameworks consume that directly. That is the cheapest first step
+and it exists today.
+
+---
+
 ## The core idea: earn your way to more insight
 
 **The app must be useful with zero input, and get more useful with every
@@ -100,6 +144,23 @@ missing thing is *worth*.
   back through them in the UI.
 - **Translation.** The report is read aloud at kitchen tables. It should be
   possible to read it in the language spoken there.
+
+### Being driven by an AI
+
+Per the principle at the top, this is now the headline direction rather than
+an afterthought.
+
+- **An MCP server.** Tools for importing a document, fetching a computed
+  summary, asking what the tool cannot see, and taking a progress snapshot.
+  Summaries by default; raw transactions only when explicitly requested.
+- **Scheduled and remote input.** Forwarding a payslip to a mailbox an agent
+  watches, which posts it to the local API, removes the monthly-export chore
+  that kills tools like this. The trade-off deserves naming: that mailbox is a
+  third party, and would be the one place data leaves the machine. Deliberate,
+  documented, and off by default.
+- **Composability with other data.** Somebody may want to reason across this
+  alongside health or wellbeing data. That needs nothing beyond stable names,
+  stated units and honest confidence - but it is the reason those matter.
 
 ---
 

@@ -47,6 +47,30 @@ services:
       - api
     restart: unless-stopped
 
+  # How an AI agent drives this tool. Speaks MCP over stdio, so nothing is
+  # listening on a port and the transport never touches the network.
+  #
+  # Point an agent at it with:
+  #   docker compose -f /path/to/docker-compose.yml run --rm -T mcp
+  #
+  # Behind a profile so `docker compose up` does not start it - it is spawned
+  # by whatever agent wants it, not left running.
+  mcp:
+    profiles: ["mcp"]
+    build: ./api
+    volumes:
+      - ./api/wyrmhoard:/app/wyrmhoard
+      - ./config:/config
+      - ./data:/data
+      - ./reports:/reports
+    environment:
+      WYRMHOARD_CONFIG_DIR: /config
+      WYRMHOARD_DATA_DIR: /data
+      WYRMHOARD_REPORT_DIR: /reports
+      TZ: Pacific/Auckland
+    stdin_open: true
+    command: python -m wyrmhoard.mcp_server
+
   # JavaScript linting. Behind a profile, and Node exists only for this - the
   # dashboard itself has no build step and no dependencies. Running it through
   # a container rather than requiring Node on the host keeps the promise that
