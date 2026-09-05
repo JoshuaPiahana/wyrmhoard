@@ -292,7 +292,7 @@ and `args` of an MCP server entry.
 **Summaries by default.** An agent answering "can we afford a holiday?" gets a
 three-kilobyte summary, not three thousand rows naming every shop you visited.
 On a real two-year ledger that is **154× less data** than the raw records —
-and `list_transactions` is the only tool that returns them at all, with a
+and `list_transactions` is the only tool that returns raw rows at all, with a
 description telling the model to avoid it. Minimisation is built into which
 tools exist, not left to a policy somebody has to remember.
 
@@ -306,6 +306,16 @@ arrives from that were never imported, spending it could not categorise, and
 rate constants nobody has verified. This exists because the tool once told a
 household they were missing family tax credits that were simply arriving in an
 account it had not been given.
+
+**An agent can close the gaps it finds.** Public rules get categorisation to
+about 74% on a real ledger. The rest is local merchants — a corner dairy, a
+sports club — that no public rule file could contain, and none should.
+`get_uncategorised` groups the unrecognised spending by merchant, and
+`teach_category` writes what you work out into `config/learned.yml`, which is
+gitignored and merged over the public ruleset. The model identifies a shop
+once; Wyrmhoard then applies that answer identically every month instead of
+re-judging it. It is the only tool that writes a judgement down, so it
+validates hard: a rule can teach a new merchant, never invent a category.
 
 You also get **OpenAPI free** at `/openapi.json` if your agent framework
 prefers that.
