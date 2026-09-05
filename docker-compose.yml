@@ -107,7 +107,7 @@ services:
   #   ./hoard lint
   lint-js:
     profiles: ["lint"]
-    image: node:22-alpine
+    image: node:26-alpine
     working_dir: /web
     volumes:
       - ./web:/web
