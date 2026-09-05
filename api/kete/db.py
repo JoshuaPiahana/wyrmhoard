@@ -185,9 +185,7 @@ def insert_transactions(rows: Iterable[dict[str, Any]], source_file: str) -> int
     return after - before
 
 
-def log_import(
-    sha: str, filename: str, rows_seen: int, rows_new: int, parser: str
-) -> None:
+def log_import(sha: str, filename: str, rows_seen: int, rows_new: int, parser: str) -> None:
     with connect() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO import_log
@@ -206,17 +204,13 @@ def log_import(
 
 def already_imported(sha: str) -> dict[str, Any] | None:
     with connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM import_log WHERE file_sha256 = ?", (sha,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM import_log WHERE file_sha256 = ?", (sha,)).fetchone()
     return dict(row) if row else None
 
 
 def all_transactions() -> list[dict[str, Any]]:
     with connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM transactions ORDER BY date, fingerprint"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM transactions ORDER BY date, fingerprint").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -269,23 +263,16 @@ def set_manual_balance(
 
 def manual_balances() -> list[dict[str, Any]]:
     with connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM manual_balances ORDER BY as_at, label"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM manual_balances ORDER BY as_at, label").fetchall()
     return [dict(r) for r in rows]
 
 
 def stats() -> dict[str, Any]:
     with connect() as conn:
         n = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
-        rng = conn.execute(
-            "SELECT MIN(date) AS lo, MAX(date) AS hi FROM transactions"
-        ).fetchone()
+        rng = conn.execute("SELECT MIN(date) AS lo, MAX(date) AS hi FROM transactions").fetchone()
         accounts = [
-            r[0]
-            for r in conn.execute(
-                "SELECT DISTINCT account FROM transactions"
-            ).fetchall()
+            r[0] for r in conn.execute("SELECT DISTINCT account FROM transactions").fetchall()
         ]
         files = conn.execute("SELECT COUNT(*) FROM import_log").fetchone()[0]
     return {

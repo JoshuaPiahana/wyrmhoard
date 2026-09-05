@@ -1,0 +1,63 @@
+name: Bank export not read correctly
+description: The CSV parser misread your bank's export, or refused it.
+labels: [bank-format, enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ Send a FAKE file, never your real one
+
+        To teach the parser a new layout we need the **shape** of the file,
+        not its contents. Please retype three or four rows with invented
+        merchants, dates and amounts, keeping the real column layout, header
+        row and date format.
+
+        A good synthetic sample looks like this:
+
+        ```
+        38-9014-0123456-00,01-07-2025,SOME SHOP,,,,,,,,,,,45.00,-45.00,900.00
+        ```
+
+        (That account number is the project's standard placeholder. Please use
+        it rather than inventing your own — a committed guard blocks anything
+        that looks like a real account number, including plausible fakes.)
+
+  - type: checkboxes
+    id: no-data
+    attributes:
+      label: Confirmation
+      options:
+        - label: The sample below is invented. It contains no real transactions.
+          required: true
+
+  - type: input
+    id: bank
+    attributes:
+      label: Bank and country
+      placeholder: e.g. Kiwibank, New Zealand
+    validations:
+      required: true
+
+  - type: input
+    id: export-path
+    attributes:
+      label: Where in internet banking did you export it from?
+      description: Layouts often differ between export screens in the same bank.
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Synthetic sample rows
+      description: Include the header row if the file has one.
+      render: csv
+    validations:
+      required: true
+
+  - type: textarea
+    id: parse-report
+    attributes:
+      label: What the parser reported
+      description: |
+        Run `./kete ingest` and paste the confidence, column map and warnings.
+        The column map contains no personal data.
+      render: shell

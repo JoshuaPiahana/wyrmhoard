@@ -1,0 +1,100 @@
+[project]
+name = "kete"
+version = "0.1.0"
+description = "Household finance, computed locally. Your bank data never leaves your machine."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["personal-finance", "budgeting", "self-hosted", "privacy"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "api" }
+
+[tool.setuptools.packages.find]
+where = ["api"]
+include = ["kete*"]
+
+# ---------------------------------------------------------------------------
+# Ruff - linting and formatting in one tool, so there is one thing to install
+# and one thing to keep in sync with CI.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["api"]
+extend-exclude = ["data", "reports"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade - keep modern syntax
+    "B",    # bugbear - real bug patterns
+    "C4",   # comprehension clarity
+    "SIM",  # simplification
+    "RUF",  # ruff's own checks
+    "PTH",  # prefer pathlib
+    "DTZ",  # naive-datetime traps
+]
+ignore = [
+    "E501",    # line length is handled by the formatter
+    "B008",    # FastAPI's Depends/File defaults are the documented idiom
+    "RUF001",  # we intentionally use en dashes and macrons in user-facing text
+    "RUF002",
+    "RUF003",
+    # Dates here are deliberately naive local dates. A household's "today" is
+    # the day on their kitchen calendar, not a UTC instant, and the container
+    # is pinned to the household's timezone for exactly that reason.
+    "DTZ001", "DTZ005", "DTZ007", "DTZ011",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are allowed to be blunt about imports and assertions.
+"api/tests/*" = ["E402", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["kete"]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# mypy - deliberately pragmatic rather than strict. The goal is catching real
+# type errors in a codebase that handles money, not achieving a clean strict
+# run on third-party stubs that do not exist.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+files = ["api/kete"]
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_unreachable = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+pretty = true
+
+[[tool.mypy.overrides]]
+# pandas' own types are a moving target; we care about our logic, not theirs.
+module = ["pandas.*", "pdfplumber.*", "yaml.*"]
+ignore_errors = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["api/tests"]
+pythonpath = ["api"]
+addopts = "-q --strict-markers"
+markers = [
+    "e2e: browser tests requiring the full docker stack (deselect with -m 'not e2e')",
+    "integration: tests that exercise the API through its real HTTP surface",
+]

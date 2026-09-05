@@ -255,7 +255,9 @@ categories:
     label: "Internal transfer"
     group: transfer
     priority: 1
-    note: "Excluded from spending and income totals so money moving between your own accounts never looks like either."
+    note: >
+      Excluded from spending and income totals, so money moving between your
+      own accounts never looks like either.
     match: ["TRANSFER TO", "TRANSFER FROM", "TFR TO", "TFR FROM", "INTERNET TRANSFER",
             "OWN ACCOUNT", "SWEEP", "ONLINE TRANSFER"]
 

@@ -20,7 +20,8 @@ import.
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from .config import DATA_DIR
 
@@ -56,7 +57,7 @@ def by_ledger(fn: F) -> F:
     def wrapper(*args, **kwargs):
         key = (ledger_version(), args, tuple(sorted(kwargs.items())))
         if key not in store:
-            store.clear()          # only ever hold the current version
+            store.clear()  # only ever hold the current version
             store[key] = fn(*args, **kwargs)
         return store[key]
 

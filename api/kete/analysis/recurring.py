@@ -67,7 +67,11 @@ def detect(min_occurrences: int = 3, months: int = 12) -> list[dict[str, Any]]:
     if df.empty:
         return []
 
-    cutoff = df["date"].max() - pd.Timedelta(days=months * 31)
+    # DateOffset rather than Timedelta(days=months * 31): it means what we
+    # actually mean ("twelve months back", not "372 days back"), and
+    # Timedelta(days=<int>) emits a NumPy generic-unit deprecation under
+    # pandas 2.2 that is scheduled to become an error.
+    cutoff = df["date"].max() - pd.DateOffset(months=months)
     sub = df[(df["date"] >= cutoff) & df["is_spend"]].copy()
     if sub.empty:
         return []
@@ -81,9 +85,7 @@ def detect(min_occurrences: int = 3, months: int = 12) -> list[dict[str, Any]]:
             continue
         chunk = chunk.sort_values("date")
         dates = chunk["date"].tolist()
-        intervals = [
-            (dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)
-        ]
+        intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
         intervals = [i for i in intervals if i > 0]
         if not intervals:
             continue
@@ -122,17 +124,14 @@ def detect(min_occurrences: int = 3, months: int = 12) -> list[dict[str, Any]]:
                 "typical_amount": round(float(amounts.median()), 2),
                 "amount_varies": not stable,
                 "annual_cost": round(float(amounts.median()) * PER_YEAR[cadence], 2),
-                "monthly_cost": round(
-                    float(amounts.median()) * PER_YEAR[cadence] / 12, 2
-                ),
+                "monthly_cost": round(float(amounts.median()) * PER_YEAR[cadence] / 12, 2),
                 "regularity": regularity,
                 "first_seen": dates[0].date().isoformat(),
                 "last_seen": last_seen.date().isoformat(),
                 "days_since_last": days_since,
                 # Something on a monthly cadence not seen for 2+ cycles has
                 # probably stopped - worth confirming rather than budgeting for.
-                "possibly_cancelled": days_since
-                > (365.25 / PER_YEAR[cadence]) * 2,
+                "possibly_cancelled": days_since > (365.25 / PER_YEAR[cadence]) * 2,
             }
         )
 

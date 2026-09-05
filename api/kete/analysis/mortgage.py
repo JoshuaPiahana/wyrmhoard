@@ -6,10 +6,10 @@ does the loan end and what does the interest cost?" and nothing more. What a
 household should actually do with a spare dollar depends on things this tool
 cannot see, and on a sequencing question it deliberately takes a view on:
 
-a family with three children and a fortnight of cash in the bank is not in a
-position to throw money at a mortgage. A buffer comes first, because the
-alternative to a buffer is not "faster mortgage payoff" - it is credit at 20%
-the first time the car needs a new clutch.
+a household with a fortnight of cash in the bank is not in a position to throw
+money at a mortgage. A buffer comes first, because the alternative to a buffer
+is not "faster mortgage payoff" - it is credit at 20% the first time the car
+needs a new clutch.
 """
 
 from __future__ import annotations
@@ -120,16 +120,12 @@ def scenarios(
         out.append(
             {
                 "extra_per_period": extra,
-                "extra_per_month": round(
-                    extra * PERIODS_PER_YEAR.get(frequency, 26) / 12, 2
-                ),
+                "extra_per_month": round(extra * PERIODS_PER_YEAR.get(frequency, 26) / 12, 2),
                 "years": s["years"],
                 "payoff_date": s["payoff_date"],
                 "total_interest": s["total_interest"],
                 "years_saved": round(base["years"] - s["years"], 2),
-                "interest_saved": round(
-                    base["total_interest"] - s["total_interest"], 2
-                ),
+                "interest_saved": round(base["total_interest"] - s["total_interest"], 2),
             }
         )
     return {"available": True, "base": base, "scenarios": out}
@@ -163,13 +159,8 @@ def from_household(hh) -> dict[str, Any]:
     result["fixed_until"] = m.get("fixed_until")
 
     if result.get("available"):
-        base = result["base"]
         # Interest per week is the number that makes the cost of the loan feel
         # real, and it is what an extra repayment is actually buying back.
-        result["interest_first_year"] = round(
-            float(balance) * float(rate) / 100.0, 2
-        )
-        result["interest_per_week_now"] = round(
-            float(balance) * float(rate) / 100.0 / 52, 2
-        )
+        result["interest_first_year"] = round(float(balance) * float(rate) / 100.0, 2)
+        result["interest_per_week_now"] = round(float(balance) * float(rate) / 100.0 / 52, 2)
     return result

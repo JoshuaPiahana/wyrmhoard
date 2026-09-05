@@ -6,12 +6,16 @@
    across; everything below them is replaceable.
    ========================================================================== */
 
+/* Every foreground/background pair below clears WCAG AA (4.5:1) against the
+   surface it is used on. `--ink-faint` in particular carries most of the
+   secondary text on the page - it was two shades lighter and failed on 33
+   elements, which an automated axe run in CI now guards against. */
 :root{
   --paper:#fbf9f5;
   --card:#ffffff;
   --ink:#1f2421;
   --ink-soft:#4a5450;
-  --ink-faint:#7b8783;
+  --ink-faint:#5c6763;
   --line:#e4ded3;
   --line-soft:#efeae1;
 
@@ -19,7 +23,7 @@
   --accent-bg:#e6efee;
   --good:#2f6f4e;
   --good-bg:#e8f2ec;
-  --warn:#9a6414;
+  --warn:#7a4f0f;
   --warn-bg:#fbf1de;
   --bad:#9c3a2e;
   --bad-bg:#f9e9e6;
@@ -31,7 +35,7 @@
 @media (prefers-color-scheme: dark){
   :root{
     --paper:#15181a; --card:#1c2023; --ink:#e8eae7; --ink-soft:#aab4b0;
-    --ink-faint:#7d8783; --line:#2c3236; --line-soft:#242a2d;
+    --ink-faint:#98a29e; --line:#2c3236; --line-soft:#242a2d;
     --accent:#7fc0b8; --accent-bg:#1e2e2d;
     --good:#79c79b; --good-bg:#1c2b23;
     --warn:#e0b063; --warn-bg:#2d2619;
@@ -128,7 +132,10 @@ section{margin-bottom:34px}
 .chart .in{background:var(--good); border-radius:3px 3px 0 0; min-height:2px}
 .chart .out{background:#c9a227; border-radius:0 0 3px 3px; min-height:2px}
 .chart .lab{font-size:10px; color:var(--ink-faint); white-space:nowrap; transform:rotate(-45deg); transform-origin:center; height:22px}
-.chart .col.partial{opacity:.4}
+/* Fade only the bars, never the label. Dimming the whole column dropped the
+   month label to 1.8:1 contrast - unreadable, and an automated a11y failure. */
+.chart .col.partial .stack{opacity:.45}
+.chart .col.partial .lab{font-style:italic}
 
 /* ---- findings ------------------------------------------------------- */
 .finding{border-left:4px solid var(--line); padding:14px 0 14px 16px; margin-bottom:18px}

@@ -8,9 +8,9 @@ would normally receive?
 
 That framing matters because the observed number comes from the household's
 own bank data and is therefore certain, while the expected number comes from
-rate constants that may be a year out of date. "You received $0 from IRD in
-twelve months, and you have three children on a single income" is a solid,
-actionable finding even if every rate in nz_rates.yml is wrong.
+rate constants that may be a year out of date. "You received nothing from IRD
+in twelve months, and you have dependent children" is a solid, actionable
+finding even if every rate in nz_rates.yml is wrong.
 
 So: observation first, estimate second, and the estimate is always labelled
 an estimate and always accompanied by a link to IRD's own calculator.
@@ -33,7 +33,9 @@ def observed_support(months: int = 12) -> dict[str, Any]:
     if df.empty:
         return {"available": False, "reason": "No transactions imported yet."}
 
-    cutoff = df["date"].max() - pd.Timedelta(days=months * 31)
+    # See the note in recurring.detect() - DateOffset is both more accurate
+    # and free of the pandas 2.2 generic-unit deprecation.
+    cutoff = df["date"].max() - pd.DateOffset(months=months)
     sub = df[(df["date"] >= cutoff) & (df["amount"] > 0)]
 
     ird = sub[sub["category"] == "income_ird"]
@@ -88,8 +90,13 @@ def observed_income(months: int = 12) -> dict[str, Any]:
 
 
 def _gross_estimate(hh, net_annual: float | None) -> tuple[float | None, str]:
-    """Prefer the declared salary; otherwise gross up the observed net."""
-    declared = (hh.income.get("primary") or {}).get("gross_annual")
+    """
+    Prefer the declared salary; otherwise gross up the observed net.
+
+    Sums across every earner, so a two-income household is assessed on the
+    combined figure that entitlement abatement actually uses.
+    """
+    declared = hh.gross_income_declared
     if declared:
         return float(declared), "declared in household.yml"
     if net_annual:
@@ -110,6 +117,25 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
     hh = config.household()
     rt = config.rates()
 
+    # Region gate. Showing a household outside New Zealand what a NZ family
+    # would receive would be worse than showing nothing, so the module says
+    # plainly that it does not cover their country rather than guessing.
+    if not hh.region_supported:
+        return {
+            "available": False,
+            "is_estimate": True,
+            "unsupported_country": hh.country,
+            "reason": (
+                f"Entitlement estimates are only implemented for New Zealand, "
+                f"and this household is configured as {hh.country}. Everything "
+                "else in the tool works normally - only this page is skipped."
+            ),
+            "how_to_add": (
+                "Add a rates file for your country modelled on config/nz_rates.yml "
+                "and extend Household.region_supported."
+            ),
+        }
+
     wff = rt.block("working_for_families")
     bs = rt.block("best_start")
     verified = rt.is_verified("working_for_families") and rt.is_verified("best_start")
@@ -129,13 +155,11 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
         "child_ages": ages,
         "gross_income_used": gross,
         "gross_income_source": gross_source,
-        "calculator_url": wff.get("calculator")
-        or "https://www.ird.govt.nz/working-for-families",
+        "calculator_url": wff.get("calculator") or "https://www.ird.govt.nz/working-for-families",
         "caveats": [
             "This is an estimate from locally-stored rate constants, not an "
             "entitlement calculation. IRD's own calculator is authoritative.",
-            "It ignores shared care, child support, and any income the tool "
-            "cannot see.",
+            "It ignores shared care, child support, and any income the tool " "cannot see.",
         ],
     }
 
@@ -203,9 +227,7 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
         else:
             continue
         best_start_total += amount
-        best_start_detail.append(
-            {"child_age": age, "annual": round(amount, 2), "note": note}
-        )
+        best_start_detail.append({"child_age": age, "annual": round(amount, 2), "note": note})
 
     total = wff_estimate + best_start_total
     obs = observed_support()
@@ -259,9 +281,7 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
             )
             result["severity"] = "medium"
         else:
-            result["headline"] = (
-                "What you receive is broadly in line with the estimate."
-            )
+            result["headline"] = "What you receive is broadly in line with the estimate."
             result["severity"] = "low"
 
     return result

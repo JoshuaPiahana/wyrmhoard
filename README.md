@@ -1,105 +1,160 @@
 # kete
 
-A household financial picture, assembled from your own records and computed
-entirely on your own machine.
+**See where your household's money actually goes, decide what to change, and
+measure whether it worked — without your bank data ever leaving your computer.**
 
-Built for one family in Ashhurst: a single PAYE income, three children, a
-mortgage, no consumer debt, and a month that keeps ending at zero. The point
-is not to produce charts. It is to answer three questions honestly enough to
-act on:
+[![CI](https://github.com/JoshuaPiahana/kete/actions/workflows/ci.yml/badge.svg)](https://github.com/JoshuaPiahana/kete/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-1. **Where does it actually go?**
-2. **What would change the trajectory?**
-3. **Is it working?** — measured, not remembered.
+Most budgeting apps want your bank login, sell your spending data, or stop
+working when the subscription lapses. This one runs in two containers on your
+own machine, reads CSV files you export yourself, and talks to nothing.
+
+It answers three questions:
+
+1. **Where does it actually go?** Twelve months of transactions, categorised.
+2. **What would change things?** A short, ranked, costed list — not thirty tips.
+3. **Is it working?** Snapshots you take each month, so progress is measured
+   rather than remembered.
+
+It also produces a **printable report designed for a household meeting**,
+including a page written for children.
+
+> **A kete is a woven flax basket for gathering and carrying things worth
+> keeping.** That is roughly the job here.
 
 ---
 
-## Privacy
+## Is this for me?
 
-Nothing leaves this machine. There is no telemetry, no cloud sync, no API key,
-and no third-party service. The containers bind to `127.0.0.1` only, so the
-dashboard is not reachable from your own LAN, let alone the internet.
+**Yes, if** you can export CSV files from your bank and run one command.
 
-`.gitignore` excludes `data/`, `reports/`, `config/household.yml` and every
-`*.csv` and `*.pdf` in the tree. Real financial data cannot be committed by
-accident. Check it before you ever run `git add -A` anyway.
+The tool makes no assumptions about your household. Renting, no mortgage, one
+income, two incomes, no children, five children, single, retired — all of it
+is supported and tested. Sections that do not apply to you simply do not
+appear.
+
+**Two honest limitations:**
+
+- **Bank support.** The CSV parser works out the layout of the file rather
+  than assuming one, so it handles most bank exports. It has been tested
+  hardest against Kiwibank (New Zealand). If yours misreads, the tool tells
+  you rather than importing nonsense — and [it is a bug worth
+  reporting](CONTRIBUTING.md).
+- **Entitlements are New Zealand only.** The module that checks whether you
+  are claiming everything you are owed currently understands NZ rules only.
+  Set `country:` to anything else and that one page switches itself off; every
+  other part works normally. [Adding your country](CONTRIBUTING.md) is very
+  welcome.
 
 ---
 
 ## Getting started
 
-Everything runs in Docker inside WSL.
+**You need:** [Docker](https://docs.docker.com/get-started/get-docker/) and
+about fifteen minutes. Nothing else — no Python, no Node.
+
+> **Not comfortable with a terminal?** This README is written to be pasted
+> into an AI assistant. Try: *"I want to run the kete project on my computer.
+> Here is its README. Walk me through it one step at a time, and tell me
+> exactly what to type."* Every command below is complete and safe to copy.
+
+### 1. Get the code
 
 ```bash
-cd /mnt/e/projects/finance && docker compose up -d
+git clone https://github.com/JoshuaPiahana/kete.git
+cd kete
 ```
 
-Then open <http://localhost:8080>.
-
-To see it working before trusting it with anything real, load fourteen months
-of synthetic data:
+### 2. Start it
 
 ```bash
-./kete sample && ./kete ingest --sample
+docker compose up -d
 ```
 
-That data is invented. It exists so you can judge whether the tool is worth
-your bank exports.
+First run takes a few minutes to download and build. When it finishes, open
+**<http://localhost:8080>**. You should see the dashboard with a banner
+saying there is no data yet — that is correct.
 
-### Docker on boot
+### 3. See it working with fake data
 
-`/etc/wsl.conf` has been set to start the daemon when WSL starts:
+Before trusting it with anything real, look at it working:
 
-```ini
-[boot]
-command = service docker start
+```bash
+./kete sample
+./kete ingest --sample
 ```
 
-This takes effect after `wsl --shutdown` from Windows and the next launch.
-Until then, start it manually with `sudo service docker start`.
+Refresh the browser. The dashboard now shows fourteen months of **invented**
+transactions for a fictional household. Nothing here is real; it exists so you
+can judge the tool before feeding it your own records.
 
----
+When you have seen enough, clear it out:
 
-## The three things worth doing first
+```bash
+./kete reset --yes
+```
 
-**1. Fill in `config/household.yml`** (copy from `household.example.yml`).
-Ages, mortgage rate and repayment drive the entitlement and payoff maths. It
-is gitignored. Ten minutes.
+### 4. Add your own details
 
-**2. Verify the rates in `config/nz_rates.yml`.**
-They were seeded from a language model's training data and are almost
-certainly a year out of date. Until you set `verified: true`, every
-entitlement figure is labelled an estimate and the dashboard says so. This is
-the highest-value ten minutes in the project — the numbers it produces are
-large enough to matter and wrong enough to mislead.
+```bash
+cp config/household.example.yml config/household.yml
+```
 
-**3. Export twelve months from Kiwibank.**
-Internet banking → your account → *Export* → CSV. A full year matters because
-it captures the bills that only arrive once: rates, insurance, rego, school
-stationery, Christmas. Six months will systematically understate your real
-cost of living.
+Open `config/household.yml` in any text editor. Every field is optional and
+explained in the file. Fill in what you know; leave the rest.
 
-Drop the files on the **Data** tab, or into `data/inbox/` and run
-`./kete ingest`.
+This file is **gitignored** and stays on your machine.
+
+### 5. Export your bank transactions
+
+In your internet banking, find the export or download option for your account
+and choose **CSV**. Ask for **twelve months**.
+
+A full year matters more than it sounds. Six months misses the bills that only
+arrive once — insurance, rates, vehicle registration, school costs, Christmas
+— and a budget that ignores those will never balance.
+
+Drop the files onto the **Data** tab in the dashboard, or copy them into
+`data/inbox/` and run:
+
+```bash
+./kete ingest
+```
+
+The tool reports what it made of each file: how many rows it read, which
+column it thinks is which, and how confident it is. **Read that before
+believing anything downstream.** If it says `low`, something about your bank's
+layout is not understood yet.
+
+### 6. Tidy up the categories
+
+Open the **Data** tab and look at "Fix the unknowns". Assign a category to the
+biggest few — one decision usually covers dozens of transactions.
+
+Aim for 90%+ coverage. Below that, the dashboard tells you the category charts
+are not yet trustworthy instead of drawing a confident picture over a shaky
+foundation.
 
 ---
 
 ## The monthly routine
 
-Deliberately short. A routine with more than two steps does not survive a busy
+Deliberately two commands. A routine with more steps does not survive a busy
 month.
 
 ```bash
-./kete ingest      # imports everything in data/inbox/
-./kete report      # builds the family meeting report
+./kete ingest      # import whatever is in data/inbox/
+./kete report      # build the household meeting report
 ```
 
-Then, at the meeting, take a snapshot from the **Progress** tab. That is what
-turns "it feels a bit better" into a number.
+Then open `reports/latest.html`, sit down with it, and take a snapshot from
+the **Progress** tab when you are done. That snapshot is what turns "it feels
+a bit better" into a number you can see next month.
 
-Re-importing the same file is safe. Transactions are fingerprinted, so
-overlapping exports de-duplicate themselves and you never have to keep track
-of what you already loaded.
+Re-importing a file you have already imported is safe. Every transaction is
+fingerprinted, so overlapping exports de-duplicate themselves and you never
+have to track what you already loaded.
 
 ---
 
@@ -107,16 +162,21 @@ of what you already loaded.
 
 | Command | What it does |
 |---|---|
+| `./kete up` | Start the dashboard at <http://localhost:8080> |
+| `./kete down` | Stop everything |
 | `./kete ingest` | Import every CSV in `data/inbox/` |
-| `./kete ingest --sample` | Import the synthetic sample |
+| `./kete ingest --sample` | Import synthetic demo data |
 | `./kete summary` | Headline numbers in the terminal |
 | `./kete review` | Biggest uncategorised spending, largest first |
-| `./kete recategorise` | Re-apply rules after editing `rules.yml` |
-| `./kete report` | Build the family meeting report |
+| `./kete recategorise` | Re-apply rules after editing `config/rules.yml` |
+| `./kete report` | Build the household meeting report |
 | `./kete snapshot` | Freeze this month's numbers |
 | `./kete loan` | Mortgage payoff scenarios |
-| `./kete test` | Run the test suite |
+| `./kete reset --yes` | Delete the ledger (your CSV files are untouched) |
+| `./kete lint` / `test` / `e2e` / `check` | The quality gates |
 | `./kete logs` | Tail the API logs |
+
+On Windows, run these from **WSL** or **Git Bash**.
 
 ---
 
@@ -126,100 +186,94 @@ The tool is built to fail loudly rather than quietly, because a confident
 wrong number is worse than an admitted gap.
 
 - **Categorisation coverage is reported everywhere.** Below 90%, the dashboard
-  says the category charts are not yet trustworthy instead of drawing a clean
-  chart over a shaky foundation. Fix the biggest unknowns on the Data tab —
-  one decision usually covers dozens of transactions.
-
+  says so rather than pretending the charts are meaningful.
 - **The current month is never counted as complete.** A month three days old
-  shows a fortnight's rent gone and no salary in yet, which reads as
-  catastrophe. It is excluded from every average.
-
-- **"Typical" means median, not mean.** One $3,000 car repair should not become
+  shows the rent gone and no pay in yet, which reads as catastrophe.
+- **"Typical" means median, not mean.** One large car repair should not become
   your normal monthly spending. Where the two diverge sharply, the report says
-  so, because that gap is itself a finding.
-
-- **Entitlement figures are estimates.** They compare what actually landed in
-  your account from IRD against what a household of your shape would normally
-  receive. The observed half is certain; the expected half depends on rate
-  constants you have not verified yet. IRD's own calculator is the authority.
-
-- **Import confidence is reported per file.** The CSV parser sniffs the layout
-  rather than assuming one, and tells you what it decided. If it says `low`,
-  read the warnings before believing anything downstream.
-
-- **None of this is regulated financial advice.** It is arithmetic on your own
-  bank data, plus prompts to go and check things with the organisations that
-  actually hold the answers.
+  so — that gap is itself a finding.
+- **Import confidence is reported per file.** The parser tells you what it
+  decided about your CSV's layout.
+- **Entitlement figures are estimates.** The tool compares what actually
+  landed in your account against what a household of your shape would
+  normally receive. The observed half is certain. The expected half depends on
+  rate constants in `config/nz_rates.yml` that ship **unverified** and are
+  labelled as such until you check them against the official source.
+- **This is not financial advice.** It is arithmetic on your own bank data,
+  plus prompts to go and check things with the organisations that hold the
+  answers. It does not recommend investments or products, and it never will.
 
 ---
 
-## Layout
+## Privacy
+
+Your data never leaves your machine. No telemetry, no cloud, no accounts, no
+API keys, and no outbound network requests at runtime. Both containers bind to
+`127.0.0.1` only.
+
+Two independent controls keep financial data out of git: `.gitignore`, and a
+guard script that runs on every commit and in CI — because `.gitignore` is a
+convenience, not a control.
+
+Full detail, including the threat model and what is **not** protected, is in
+[SECURITY.md](SECURITY.md).
+
+---
+
+## How it fits together
 
 ```
 config/
-  household.yml        your family's facts (gitignored — copy the example)
-  rules.yml            merchant → category rules, NZ-specific
-  nz_rates.yml         entitlement constants + whether they are verified
-  learned.yml          corrections you make in the UI (created on demand)
+  household.yml     your household's facts (gitignored — copy the example)
+  rules.yml         merchant → category rules
+  nz_rates.yml      entitlement constants, and whether they are verified
 data/
-  inbox/               drop bank CSV exports here
-  ledger.db            SQLite; the whole ledger, easy to back up
-  samples/             synthetic data, safe to commit
-reports/               generated family meeting reports (gitignored)
+  inbox/            drop bank CSV exports here
+  ledger.db         SQLite — your whole history in one backup-able file
+reports/            generated meeting reports (gitignored)
 api/kete/
-  ingest/bank_csv.py   format-sniffing CSV parser
-  categorise.py        memo → category
-  analysis/            cashflow, recurring, mortgage, entitlements
-  coach.py             findings and the sequenced plan
-  report.py            the family meeting report
-  api.py               FastAPI, ~20 thin endpoints
-web/src/               dashboard (no build step, no framework)
+  ingest/           format-sniffing CSV parser
+  categorise.py     memo → category
+  analysis/         cash flow, recurring payments, debt payoff, entitlements
+  coach.py          ranked findings and the sequenced plan
+  report.py         the meeting report
+  api.py            FastAPI — thin endpoints over the analysis
+web/src/            dashboard — no build step, no framework
+e2e/                browser tests
 ```
 
----
+### Replacing the interface
 
-## Replacing the interface
-
-The frontend holds no business logic. The JavaScript does exactly two things:
-
-- fills any element carrying `data-bind="path.into.state"`, formatted by
-  `data-format="money|money2|pct|weeks|int|date|text"`
-- renders lists into containers carrying `data-list="name"`
-
-So a design from Stitch (or anywhere else) drops in by carrying those
-attributes onto whatever markup it uses. No build step, no framework, no
-rewiring of the maths. `web/src/css/app.css` starts with a token block — that
-is the only part worth carrying across.
+The frontend holds no business logic. The JavaScript does two things: it fills
+elements carrying `data-bind="path.into.state"`, and renders lists into
+containers carrying `data-list="name"`. Any design that keeps those attributes
+drops straight in — no build step, no framework, no rewiring of the maths.
 
 ---
 
-## Tests
+## Quality gates
+
+Every push runs: a financial-data and secret scan, `ruff`, `mypy`, `yamllint`,
+`shellcheck`, unit and integration tests on Python 3.11 and 3.12, a Docker
+build, twenty-eight browser tests (including automated accessibility and
+mobile-overflow checks), and a job that follows this README's quickstart on a
+clean machine to prove the instructions still work.
 
 ```bash
-./kete test
+./kete check
 ```
-
-They cover the places where a silent bug would be most expensive: money sign
-handling, CSV column detection, de-duplication on re-import, categorisation
-normalisation, which months count as complete, and cache invalidation. Two are
-regression tests for bugs found while building it.
 
 ---
 
-## Troubleshooting
+## Contributing
 
-**Dashboard says it cannot reach the API.**
-`docker compose ps` — if `kete-api` is not up, `docker compose logs api`.
+Bank formats, merchant rules for your region, and entitlement modules for
+other countries are the most valuable things anyone could add. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Docker daemon not running after a reboot.**
-`sudo service docker start`, or `wsl --shutdown` from Windows to pick up the
-`/etc/wsl.conf` boot command.
+**Never commit financial data** — use the synthetic generator in
+`api/kete/samples.py`.
 
-**Import confidence is `low`.**
-The layout was not understood. Run `./kete ingest` and read the reported
-column map, or use the Data tab, which shows the same detail. Send a redacted
-sample if the sniffer needs teaching a new Kiwibank variant.
+## Licence
 
-**Numbers look stale after editing a YAML file.**
-Analysis is cached against the ledger file, so a config-only edit needs
-"Reload config & recategorise" on the Data tab, or `./kete recategorise`.
+[MIT](LICENSE).

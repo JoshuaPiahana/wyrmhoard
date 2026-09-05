@@ -1,97 +1,136 @@
 # ===========================================================================
-# household.yml — the one file that makes this tool *yours*.
-# Copy to config/household.yml (gitignored) and fill in.
-# Nothing here leaves your machine.
+# household.yml - the one file that makes this tool yours.
+#
+#   cp config/household.example.yml config/household.yml
+#
+# Your copy is gitignored and never leaves your machine.
+#
+# Almost everything here is optional. The tool works with an empty file - it
+# will just show you cash flow and categories. Each section you fill in
+# unlocks more: children enable the entitlements check, a mortgage enables
+# payoff maths, a declared salary sharpens the estimates.
 # ===========================================================================
 
 household:
-  name: "Our Whānau"
-  # Used only to set the local tax year, public holidays and entitlement rules.
+  name: "Our Household"
+
+  # Gates the region-specific modules. Only NZ has an entitlements module so
+  # far; any other value simply switches that page off and leaves everything
+  # else working normally.
   country: NZ
-  # Ashhurst sits inside Palmerston North City Council for rates purposes.
-  council: "Palmerston North City Council"
 
-people:
-  - name: "You"
-    role: earner            # earner | partner | child
-    birth_year: 1992
-  - name: "Partner"
-    role: partner
-    birth_year: 1995
-  - name: "Child 1"
-    role: child
-    birth_year: 2017
-  - name: "Child 2"
-    role: child
-    birth_year: 2019
-  - name: "Child 3"
-    role: child
-    birth_year: 2024
+  # Optional. Used only to point you at the right rates-rebate scheme.
+  council: null
 
+# ---------------------------------------------------------------------------
+# People. Optional - omit entirely if you would rather not record them.
+# `role` is one of: earner, partner, child.
+# ---------------------------------------------------------------------------
+people: []
+
+# Example of a household with children:
+#
+# people:
+#   - name: "Sam"
+#     role: earner
+#     birth_year: 1988
+#   - name: "Alex"
+#     role: partner
+#     birth_year: 1990
+#   - name: "Riley"
+#     role: child
+#     birth_date: 2019-04-12   # exact date is better than birth_year -
+#                              # some entitlements turn on the precise age
+
+# ---------------------------------------------------------------------------
+# Income. Two shapes are accepted.
+#
+#   income.primary   - a single mapping, for one earner
+#   income.earners   - a list, for two or more
+#
+# Anything irregular belongs under `upside`, where it is treated as a windfall:
+# it can accelerate a goal, but the budget is never built on it.
+# ---------------------------------------------------------------------------
 income:
-  # One PAYE job is the plan-able income. Anything irregular goes in `upside`
-  # so it never props up the budget — it only ever accelerates a goal.
   primary:
-    label: "Full-time PAYE"
-    gross_annual: null       # fill from payslip, or leave null to derive from bank credits
-    pay_cycle: fortnightly   # weekly | fortnightly | monthly
-    kiwisaver_employee_pct: 3
-    kiwisaver_employer_pct: 3
+    label: "Main job"
+    gross_annual: null        # from a payslip; null = infer from bank deposits
+    pay_cycle: fortnightly    # weekly | fortnightly | monthly
+    kiwisaver_employee_pct: 0 # NZ only; ignore elsewhere
+    kiwisaver_employer_pct: 0
     has_student_loan: false
-  upside:
-    - label: "Weekend work (~1 weekend/month, not guaranteed)"
-      treat_as: windfall     # windfall income is never budgeted, only allocated
 
+  # Two-income version - delete `primary` above and uncomment this instead:
+  #
+  # earners:
+  #   - label: "Sam - full time"
+  #     gross_annual: 78000
+  #     pay_cycle: fortnightly
+  #     kiwisaver_employee_pct: 3
+  #   - label: "Alex - part time"
+  #     gross_annual: 32000
+  #     pay_cycle: weekly
+  #     kiwisaver_employee_pct: 3
+
+  upside: []
+  # upside:
+  #   - label: "Occasional weekend work"
+  #     treat_as: windfall
+
+# ---------------------------------------------------------------------------
+# Accounts. Helps the tool understand what it is looking at, and supplies an
+# opening balance when your export has no running-balance column.
+# ---------------------------------------------------------------------------
 accounts:
-  # `kind` drives the net-worth maths. Add every account you hold.
   - label: "Everyday"
-    kind: transaction
+    kind: transaction         # transaction | savings | mortgage | credit
     bank: kiwibank
   - label: "Savings"
     kind: savings
     bank: kiwibank
-    opening_balance: 2000
-  - label: "Mortgage"
-    kind: mortgage
-    bank: kiwibank
+    opening_balance: null
 
+# ---------------------------------------------------------------------------
+# Mortgage. Leave `balance` as null or 0 if you rent, or have paid it off -
+# the tool then skips every mortgage finding rather than nagging you about a
+# loan you do not have.
+# ---------------------------------------------------------------------------
 mortgage:
-  balance: 170000
-  property: "Our home"
-  # Fill these in from your Kiwibank loan summary — they drive the payoff maths.
+  balance: null
+  property: null
   interest_rate_pct: null
-  fixed_until: null          # YYYY-MM-DD
-  repayment: null            # per payment
+  fixed_until: null           # YYYY-MM-DD - drives a refix reminder
+  repayment: null
   repayment_frequency: fortnightly
   term_remaining_years: null
 
+# ---------------------------------------------------------------------------
+# Goals. The ladder the coach walks you up. Order matters more than content:
+# a buffer before debt repayment is deliberate, because the alternative to a
+# buffer is borrowing at a worse rate the first time something breaks.
+#
+# `target: null` means "work it out from my actual spending".
+# ---------------------------------------------------------------------------
 goals:
-  # Order matters — this is the ladder the coach walks you up.
   - id: starter_buffer
-    label: "Starter buffer — one month of essentials"
+    label: "Starter buffer - one month of essentials"
     kind: cash
-    target: null             # null = auto-calculated from your real essential spend
+    target: null
     status: active
   - id: sinking_funds
-    label: "Sinking funds for the lumpy bills (rates, rego, insurance, Christmas)"
+    label: "Sinking funds for the lumpy annual bills"
     kind: cash
     target: null
     status: pending
   - id: emergency_fund
-    label: "Emergency fund — three months of essentials"
+    label: "Emergency fund - three months of essentials"
     kind: cash
     target: null
-    status: pending
-  - id: mortgage_free
-    label: "Mortgage free"
-    kind: debt
-    target: 0
     status: pending
 
 settings:
   currency: NZD
-  # Spending under this amount is tracked as "small leaks" — the death-by-a-
-  # thousand-cuts number that budgets usually miss.
+  # Spending below this is tracked as "small purchases" - the
+  # death-by-a-thousand-cuts number that budgets usually miss entirely.
   small_transaction_threshold: 20
-  # A category is "discretionary" unless listed as essential in rules.yml.
   family_meeting_day: "first Sunday"

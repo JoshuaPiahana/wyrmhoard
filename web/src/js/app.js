@@ -431,23 +431,35 @@ function wire() {
     }
   });
 
+  // NOTE: capture the button BEFORE the first await. `event.currentTarget` is
+  // nulled once the event finishes dispatching, so reading it after an await
+  // throws — which silently skipped the refresh() that follows and left the
+  // page showing stale data. Caught by the browser tests.
   $('#btn-snapshot').addEventListener('click', async e => {
-    e.currentTarget.disabled = true;
-    await api('/snapshots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note: $('#snap-note').value || null }),
-    });
-    $('#snap-note').value = '';
-    e.currentTarget.disabled = false;
-    await refresh();
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await api('/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: $('#snap-note').value || null }),
+      });
+      $('#snap-note').value = '';
+      await refresh();
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   $('#btn-reload').addEventListener('click', async e => {
-    e.currentTarget.disabled = true;
-    await api('/reload', { method: 'POST' });
-    e.currentTarget.disabled = false;
-    await refresh();
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await api('/reload', { method: 'POST' });
+      await refresh();
+    } finally {
+      btn.disabled = false;
+    }
   });
 }
 

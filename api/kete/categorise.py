@@ -75,16 +75,11 @@ class Rule:
     regexes: tuple[re.Pattern[str], ...]
 
     def matches(self, haystack: str, squashed_haystack: str) -> bool:
-        for lit in self.literals:
-            if lit in haystack:
-                return True
-        for lit in self.squashed:
-            if lit in squashed_haystack:
-                return True
-        for rx in self.regexes:
-            if rx.search(haystack):
-                return True
-        return False
+        if any(lit in haystack for lit in self.literals):
+            return True
+        if any(lit in squashed_haystack for lit in self.squashed):
+            return True
+        return any(rx.search(haystack) for rx in self.regexes)
 
 
 @lru_cache(maxsize=1)
@@ -111,9 +106,7 @@ def compiled_rules() -> list[Rule]:
                 priority=int(cat.get("priority", 50)),
                 flag=bool(cat.get("flag", False)),
                 literals=clean,
-                squashed=tuple(
-                    s for s in (squash(p) for p in clean) if len(s) >= _MIN_SQUASH_LEN
-                ),
+                squashed=tuple(s for s in (squash(p) for p in clean) if len(s) >= _MIN_SQUASH_LEN),
                 regexes=tuple(regexes),
             )
         )
@@ -160,7 +153,10 @@ def recategorise_all() -> dict[str, Any]:
             key = overrides[fp]
             rule = idx.get(key)
             group = rule.group if rule else "unknown"
-            if group in {"essential", "discretionary", "sinking", "commitment"} and tx["amount"] > 0:
+            if (
+                group in {"essential", "discretionary", "sinking", "commitment"}
+                and tx["amount"] > 0
+            ):
                 group = "income"
             updates.append((key, group, "manual", fp))
             continue
@@ -225,8 +221,7 @@ def top_uncategorised(limit: int = 25) -> list[dict[str, Any]]:
     for tx in rows:
         key = strip_noise(tx["memo"])[:40] or "(blank)"
         b = buckets.setdefault(
-            key, {"memo": key, "count": 0, "total": 0.0, "example": tx["memo"],
-                  "fingerprints": []}
+            key, {"memo": key, "count": 0, "total": 0.0, "example": tx["memo"], "fingerprints": []}
         )
         b["count"] += 1
         b["total"] += abs(tx["amount"])

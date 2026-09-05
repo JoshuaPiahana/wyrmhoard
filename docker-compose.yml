@@ -34,3 +34,20 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+
+  # Browser tests. Behind a profile so `docker compose up` never pulls the
+  # 2GB Playwright image for someone who just wants to look at their money.
+  #   ./kete e2e
+  e2e:
+    profiles: ["e2e"]
+    image: mcr.microsoft.com/playwright/python:v1.49.1-noble
+    working_dir: /e2e
+    volumes:
+      - ./e2e:/e2e
+    environment:
+      KETE_E2E_URL: http://web
+    depends_on:
+      - web
+    command: >
+      bash -c "pip install --quiet --root-user-action=ignore -r requirements.txt
+      && pytest -q --browser chromium"

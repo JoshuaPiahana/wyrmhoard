@@ -25,11 +25,15 @@ ACCOUNT = "38-9014-0123456-00"
 
 GROCERY_STORES = ["PAK N SAVE PALM STH", "COUNTDOWN TERRACE END", "NEW WORLD ASHHURST"]
 FUEL_STOPS = ["Z ASHHURST", "BP CONNECT PALMERSTON", "GULL FEILDING"]
-TAKEAWAYS = ["MCDONALDS PALMERSTON", "DOMINOS PIZZA PN", "KFC PALMERSTON NTH",
-             "HELL PIZZA TERRACE", "UBER EATS"]
+TAKEAWAYS = [
+    "MCDONALDS PALMERSTON",
+    "DOMINOS PIZZA PN",
+    "KFC PALMERSTON NTH",
+    "HELL PIZZA TERRACE",
+    "UBER EATS",
+]
 CAFES = ["CAFE ESPRESSO PN", "COLUMBUS COFFEE", "THE BAKERY ASHHURST"]
-SHOPS = ["THE WAREHOUSE PALM STH", "KMART PALMERSTON", "BRISCOES PN",
-         "TEMU COM", "TRADE ME LTD"]
+SHOPS = ["THE WAREHOUSE PALM STH", "KMART PALMERSTON", "BRISCOES PN", "TEMU COM", "TRADE ME LTD"]
 SUBS = [
     ("NETFLIX COM", 25.99, 30),
     ("SPOTIFY NZ", 19.99, 30),
@@ -48,7 +52,15 @@ def _row(when: date, memo: str, amount: float, balance: float) -> list[str]:
         ACCOUNT,
         when.strftime("%d-%m-%Y"),
         memo,
-        "", "", "", "", "", "", "", "", "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
         credit,
         debit,
         f"{amount:.2f}",
@@ -65,7 +77,7 @@ def generate(months: int = 14, seed: int = 20260905) -> list[list[str]]:
 
     # --- Fortnightly pay ---------------------------------------------------
     pay_day = start
-    while pay_day.weekday() != 3:                      # land on a Thursday
+    while pay_day.weekday() != 3:  # land on a Thursday
         pay_day += timedelta(days=1)
     while pay_day < today:
         net = round(rnd.gauss(2380, 45), 2)
@@ -91,8 +103,12 @@ def generate(months: int = 14, seed: int = 20260905) -> list[list[str]]:
     while cur < today:
         month_start = cur.replace(day=1)
 
-        def on(day: int) -> date:
-            return month_start + timedelta(days=day - 1)
+        # `month_start` is bound as a default rather than captured, so the
+        # closure cannot drift onto a later month if this is ever called
+        # lazily. It is a latent bug today only because every call happens
+        # inside the same iteration.
+        def on(day: int, _month_start: date = month_start) -> date:
+            return _month_start + timedelta(days=day - 1)
 
         rows.append((on(5), "MERCURY NZ LTD", -round(rnd.gauss(268, 40), 2)))
         rows.append((on(8), "SPARK NEW ZEALAND", -119.99))
@@ -116,9 +132,7 @@ def generate(months: int = 14, seed: int = 20260905) -> list[list[str]]:
 
         # Fuel
         for w in range(3):
-            rows.append(
-                (on(4 + w * 9), rnd.choice(FUEL_STOPS), -round(rnd.gauss(96, 18), 2))
-            )
+            rows.append((on(4 + w * 9), rnd.choice(FUEL_STOPS), -round(rnd.gauss(96, 18), 2)))
 
         # Takeaways and cafes - the discretionary drift
         for _ in range(rnd.randint(6, 11)):
@@ -130,15 +144,11 @@ def generate(months: int = 14, seed: int = 20260905) -> list[list[str]]:
                 )
             )
         for _ in range(rnd.randint(8, 16)):
-            rows.append(
-                (on(rnd.randint(1, 28)), rnd.choice(CAFES), -round(rnd.gauss(9, 3), 2))
-            )
+            rows.append((on(rnd.randint(1, 28)), rnd.choice(CAFES), -round(rnd.gauss(9, 3), 2)))
 
         # General shopping
         for _ in range(rnd.randint(3, 7)):
-            rows.append(
-                (on(rnd.randint(1, 28)), rnd.choice(SHOPS), -round(rnd.gauss(64, 40), 2))
-            )
+            rows.append((on(rnd.randint(1, 28)), rnd.choice(SHOPS), -round(rnd.gauss(64, 40), 2)))
 
         # Small everyday spending - the leak the report annualises
         for _ in range(rnd.randint(10, 20)):

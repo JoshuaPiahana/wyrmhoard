@@ -1,0 +1,36 @@
+version: 2
+
+# Grouped and monthly on purpose. This is a household tool maintained in
+# spare evenings; a daily stream of single-dependency PRs would be noise that
+# trains you to ignore the one that matters.
+updates:
+  - package-ecosystem: pip
+    directory: /api
+    schedule:
+      interval: monthly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: pip
+    directory: /e2e
+    schedule:
+      interval: monthly
+    groups:
+      e2e-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: docker
+    directory: /api
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -27,8 +27,8 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from . import categorise, config, db
 from . import coach as coach_mod
+from . import config, db
 from .analysis import cashflow, entitlements, mortgage, recurring
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -98,9 +98,7 @@ def gather() -> dict[str, Any]:
             "discretionary": "Choices — takeaways, subscriptions, shopping",
             "unknown": "Not yet categorised",
         }
-        for key, amount in sorted(
-            typ["by_group"].items(), key=lambda kv: kv[1], reverse=True
-        ):
+        for key, amount in sorted(typ["by_group"].items(), key=lambda kv: kv[1], reverse=True):
             if amount <= 0:
                 continue
             groups.append(
@@ -156,9 +154,7 @@ def gather() -> dict[str, Any]:
         "generated": date.today(),
         # Built by hand rather than with %-d, which is glibc-only and would
         # break the day anyone runs this outside a Linux container.
-        "generated_fmt": (
-            f"{date.today().day} {date.today().strftime('%B %Y')}"
-        ),
+        "generated_fmt": (f"{date.today().day} {date.today().strftime('%B %Y')}"),
         "household": hh,
         "household_name": hh.name,
         "children_ages": hh.children_ages(),

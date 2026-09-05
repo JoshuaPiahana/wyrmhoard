@@ -93,7 +93,9 @@
         <span class="hint">Green is money in, gold is money out. Faded columns are partial months.</span>
       </div>
       <div class="card">
-        <div class="chart" data-list="monthchart"></div>
+        <!-- tabindex so the horizontal scroll is reachable without a mouse. -->
+        <div class="chart" data-list="monthchart" tabindex="0"
+             role="img" aria-label="Monthly income and spending for the last 14 months"></div>
       </div>
     </section>
 
@@ -112,7 +114,7 @@
         <h2>Every category</h2>
         <span class="hint">Median of recent complete months, annualised.</span>
       </div>
-      <div class="card tablewrap">
+      <div class="card tablewrap" tabindex="0">
         <table>
           <thead>
             <tr>
@@ -214,7 +216,7 @@
         <h2>Everything that repeats</h2>
         <span class="hint">Read it aloud once a year. Nobody decides these monthly, which is why they survive.</span>
       </div>
-      <div class="card tablewrap">
+      <div class="card tablewrap" tabindex="0">
         <table>
           <thead>
             <tr>
@@ -261,7 +263,7 @@
         <h2>Also worth checking</h2>
         <span class="hint">These depend on things the tool can't see, so they're prompts rather than calculations.</span>
       </div>
-      <div class="card tablewrap">
+      <div class="card tablewrap" tabindex="0">
         <table>
           <thead><tr><th>Support</th><th>Who it's for</th><th></th></tr></thead>
           <tbody data-list="checklist"></tbody>
@@ -285,7 +287,7 @@
       </div>
     </section>
     <section>
-      <div class="card tablewrap">
+      <div class="card tablewrap" tabindex="0">
         <table>
           <thead>
             <tr>
@@ -319,7 +321,7 @@
         <h2>Fix the unknowns</h2>
         <span class="hint">Biggest first — one decision here usually covers dozens of transactions.</span>
       </div>
-      <div class="card tablewrap">
+      <div class="card tablewrap" tabindex="0">
         <table>
           <thead><tr><th>Memo</th><th class="n">Count</th><th class="n">Total</th><th>Set category</th></tr></thead>
           <tbody data-list="unknowns"></tbody>

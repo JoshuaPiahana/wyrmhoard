@@ -1,0 +1,37 @@
+---
+# The config files here are written to be read by humans who are not
+# developers, so comments and long explanatory strings matter more than
+# machine-tidy formatting. These rules reflect that.
+extends: default
+
+ignore: |
+  data/
+  reports/
+  node_modules/
+  .venv/
+
+rules:
+  line-length:
+    max: 100
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  commas:
+    # Allow padding after a comma so tabular data can be column-aligned.
+    # The PAYE bracket table in nz_rates.yml is far easier to check against
+    # IRD's published figures when the rates line up.
+    max-spaces-after: -1
+  document-start: disable
+  truthy:
+    # GitHub Actions uses `on:` as a key, which yamllint otherwise reads as
+    # the boolean `true`.
+    check-keys: false
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+  indentation:
+    spaces: 2
+    indent-sequences: consistent

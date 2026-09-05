@@ -23,9 +23,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kete import cache, categorise, db  # noqa: E402
-from kete.analysis import cashflow  # noqa: E402
-from kete.ingest.bank_csv import _parse_money, parse_csv  # noqa: E402
+from kete import cache, categorise, db
+from kete.analysis import cashflow
+from kete.ingest.bank_csv import _parse_money, parse_csv
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ from kete.ingest.bank_csv import _parse_money, parse_csv  # noqa: E402
         ("45.60", 45.60),
         ("-45.60", -45.60),
         ("$1,234.56", 1234.56),
-        ("(123.45)", -123.45),      # accounting negative
+        ("(123.45)", -123.45),  # accounting negative
         ("1,000", 1000.0),
         ("", None),
         ("-", None),

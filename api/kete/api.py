@@ -12,10 +12,13 @@ nothing here should ever be reachable from outside the machine.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -25,10 +28,20 @@ from . import coach as coach_mod
 from .analysis import cashflow, entitlements, mortgage, recurring
 from .ingest import ingest_file, parse_csv
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Create the data directories and schema before serving the first request."""
+    config.ensure_dirs()
+    db.init()
+    yield
+
+
 app = FastAPI(
     title="kete",
     version=__version__,
     description="Household finance, computed locally.",
+    lifespan=lifespan,
 )
 
 # The frontend is served from a different port by nginx in development.
@@ -38,12 +51,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    config.ensure_dirs()
-    db.init()
 
 
 # --------------------------------------------------------------------------
@@ -156,8 +163,7 @@ def household() -> dict[str, Any]:
         "name": hh.name,
         "council": hh.council,
         "people": [
-            {"name": p.name, "role": p.role, "age": p.age_on(__import__("datetime").date.today())}
-            for p in hh.people
+            {"name": p.name, "role": p.role, "age": p.age_on(date.today())} for p in hh.people
         ],
         "children_ages": hh.children_ages(),
         "goals": hh.goals,

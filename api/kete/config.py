@@ -57,6 +57,24 @@ class Household:
     def council(self) -> str | None:
         return self.raw.get("household", {}).get("council")
 
+    @property
+    def country(self) -> str:
+        """
+        ISO-ish country code. Gates the region-specific modules.
+
+        Everything that matters - importing, categorising, cash flow,
+        recurring payments, debt payoff, the report - works anywhere. Only the
+        entitlement estimates are country-specific, and they switch themselves
+        off rather than quietly showing a household in Ontario what a New
+        Zealand family would receive.
+        """
+        return str(self.raw.get("household", {}).get("country", "NZ")).upper()
+
+    @property
+    def region_supported(self) -> bool:
+        """True when this country has an entitlements module."""
+        return self.country in {"NZ"}
+
     # -- people ------------------------------------------------------------
     @property
     def people(self) -> list[Person]:
@@ -81,9 +99,7 @@ class Household:
 
     def children_ages(self, when: date | None = None) -> list[int]:
         when = when or date.today()
-        return sorted(
-            [a for a in (c.age_on(when) for c in self.children) if a is not None]
-        )
+        return sorted([a for a in (c.age_on(when) for c in self.children) if a is not None])
 
     # -- money -------------------------------------------------------------
     @property
@@ -91,8 +107,47 @@ class Household:
         return self.raw.get("mortgage", {}) or {}
 
     @property
+    def has_mortgage(self) -> bool:
+        """
+        Renters, and owners who have finished paying, are first-class here.
+
+        A missing or zero balance means no mortgage - which is different from
+        a mortgage whose details have not been filled in yet, and the coach
+        needs to tell those apart so it does not nag a renter about a loan
+        they do not have.
+        """
+        balance = self.mortgage.get("balance")
+        return balance is not None and float(balance) > 0
+
+    @property
     def income(self) -> dict[str, Any]:
         return self.raw.get("income", {}) or {}
+
+    @property
+    def earners(self) -> list[dict[str, Any]]:
+        """
+        Every planned income stream.
+
+        Accepts both shapes: a single `primary:` mapping, or an `earners:`
+        list for households with two or more incomes. Normalising here means
+        nothing downstream has to care which was written.
+        """
+        inc = self.income
+        listed = inc.get("earners")
+        if isinstance(listed, list) and listed:
+            return [e for e in listed if isinstance(e, dict)]
+        primary = inc.get("primary")
+        return [primary] if isinstance(primary, dict) else []
+
+    @property
+    def gross_income_declared(self) -> float | None:
+        """Combined declared gross across all earners, if any are filled in."""
+        totals = [
+            float(e["gross_annual"])
+            for e in self.earners
+            if e.get("gross_annual") not in (None, "")
+        ]
+        return sum(totals) if totals else None
 
     @property
     def goals(self) -> list[dict[str, Any]]:
@@ -182,10 +237,25 @@ def rates() -> Rates:
 
 
 def reload() -> None:
-    """Drop cached config so edits on the host take effect without a restart."""
+    """
+    Drop cached config so edits on the host take effect without a restart.
+
+    This also clears the analysis caches. Those key on the ledger file, but
+    every one of them reads config too - entitlement rates, the household's
+    country, the small-transaction threshold - so a config-only change would
+    otherwise serve results computed under the old settings. Enforcing it here
+    rather than at each call site means the invariant holds for the CLI, the
+    tests and any future caller, not just the /reload endpoint.
+
+    Imported late to avoid a cycle: cache imports DATA_DIR from this module.
+    """
     household.cache_clear()
     rules.cache_clear()
     rates.cache_clear()
+
+    from . import cache as _cache
+
+    _cache.clear_all()
 
 
 def ensure_dirs() -> None:

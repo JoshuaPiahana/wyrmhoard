@@ -1,0 +1,58 @@
+name: Bug report
+description: Something behaves incorrectly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ Never attach real bank data
+
+        Issues here are public and permanent. Do not paste transactions,
+        account numbers, balances, or screenshots showing real figures.
+
+        If you need to show a data problem, reproduce it with the synthetic
+        generator (`./kete sample`) or hand-write a few fake rows in the same
+        shape. If you cannot reproduce it without real data, describe the
+        shape of the problem instead and we will work it out.
+
+  - type: checkboxes
+    id: no-data
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have not included any real financial data in this issue.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. ./kete sample && ./kete ingest --sample
+        2. Open the Spending tab
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `docker --version` and your OS. Mention WSL if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`./kete logs`, or the browser console. Redact anything personal."
+      render: shell

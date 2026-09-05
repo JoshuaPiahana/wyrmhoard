@@ -73,9 +73,7 @@ def ingest(
         raise typer.Exit(0)
 
     for r in reports:
-        colour = {"high": "green", "medium": "yellow", "low": "red"}.get(
-            r.confidence, "white"
-        )
+        colour = {"high": "green", "medium": "yellow", "low": "red"}.get(r.confidence, "white")
         console.print(
             f"\n[bold]{r.filename}[/bold]  "
             f"parsed [bold]{r.rows_parsed}[/bold]/{r.rows_seen} rows  "
@@ -158,9 +156,7 @@ def summary() -> None:
     g = Table(title="Where it goes")
     g.add_column("Group")
     g.add_column("Per month", justify="right")
-    for name, value in sorted(
-        typ["by_group"].items(), key=lambda kv: kv[1], reverse=True
-    ):
+    for name, value in sorted(typ["by_group"].items(), key=lambda kv: kv[1], reverse=True):
         if value:
             g.add_row(name.title(), _money(value))
     console.print(g)

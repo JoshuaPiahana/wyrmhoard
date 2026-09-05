@@ -32,8 +32,14 @@ from .. import db
 HEADER_HINTS: dict[str, tuple[str, ...]] = {
     "date": ("date", "transaction date", "processed date", "value date"),
     "memo": (
-        "memo", "description", "details", "particulars", "narrative",
-        "transaction details", "op name", "other party",
+        "memo",
+        "description",
+        "details",
+        "particulars",
+        "narrative",
+        "transaction details",
+        "op name",
+        "other party",
     ),
     "amount": ("amount", "transaction amount", "value"),
     "credit": ("amount (credit)", "credit", "deposit", "money in", "cr"),
@@ -43,8 +49,14 @@ HEADER_HINTS: dict[str, tuple[str, ...]] = {
 }
 
 DATE_FORMATS = (
-    "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%y", "%d/%m/%y",
-    "%d %b %Y", "%d %B %Y", "%Y/%m/%d",
+    "%d-%m-%Y",
+    "%d/%m/%Y",
+    "%Y-%m-%d",
+    "%d-%m-%y",
+    "%d/%m/%y",
+    "%d %b %Y",
+    "%d %B %Y",
+    "%Y/%m/%d",
 )
 
 _MONEY_RE = re.compile(r"^\(?-?\$?\s?-?[\d,]+(\.\d{1,2})?\)?$")
@@ -128,12 +140,7 @@ def _looks_like_header(row: list[str]) -> bool:
     if not row:
         return False
     joined = " ".join(row).lower()
-    known = sum(
-        1
-        for hints in HEADER_HINTS.values()
-        for h in hints
-        if h in joined
-    )
+    known = sum(1 for hints in HEADER_HINTS.values() for h in hints if h in joined)
     has_date = any(_parse_date(c) for c in row)
     has_money = sum(1 for c in row if _parse_money(c) is not None)
     return known >= 2 and not has_date and has_money == 0
@@ -162,9 +169,7 @@ def _map_header(row: list[str]) -> dict[str, int]:
             for i, cell in cells:
                 if i in mapping.values():
                     continue
-                if field_name == "amount" and any(
-                    x in cell for x in _AMOUNT_EXCLUSIONS
-                ):
+                if field_name == "amount" and any(x in cell for x in _AMOUNT_EXCLUSIONS):
                     continue
                 if cell == hint or (len(hint) > 4 and hint in cell):
                     mapping[field_name] = i
@@ -231,9 +236,7 @@ def _sniff_columns(rows: list[list[str]]) -> tuple[dict[str, int], str | None]:
     if account_hits:
         mapping["account"] = max(account_hits, key=lambda k: account_hits[k])
 
-    money_cols = sorted(
-        (c for c, n in money_hits.items() if n >= max(1, len(rows) // 2))
-    )
+    money_cols = sorted((c for c, n in money_hits.items() if n >= max(1, len(rows) // 2)))
     if len(money_cols) >= 2:
         # Kiwibank puts the running balance last. Balance values are large and
         # rarely negative; amounts straddle zero. Use that to confirm.
@@ -314,7 +317,9 @@ def parse_csv(
 
     report.column_map = mapping
 
-    if "date" not in mapping or ("amount" not in mapping and "debit" not in mapping and "credit" not in mapping):
+    if "date" not in mapping or (
+        "amount" not in mapping and "debit" not in mapping and "credit" not in mapping
+    ):
         report.warnings.append(
             "Could not identify a date column and an amount column. "
             "This does not look like a bank transaction export."

@@ -24,6 +24,37 @@ from .. import cache, categorise, config, db
 SPEND_GROUPS = {"essential", "discretionary", "sinking", "commitment"}
 
 
+def _empty_frame() -> pd.DataFrame:
+    """
+    An empty ledger, typed exactly like a populated one.
+
+    This matters more than it looks. An empty ledger is the normal state for
+    anyone who has just installed the tool, and a bare `pd.DataFrame(columns=
+    [...])` gives every column `object` dtype and omits the derived ones
+    entirely. Consumers then either KeyError on `is_spend`, or do date
+    arithmetic against a float NaN and get a deprecation warning that pandas
+    has said will become a hard error.
+
+    Returning a correctly-typed frame means every downstream function behaves
+    identically whether or not the household has imported anything yet.
+    """
+    return pd.DataFrame(
+        {
+            "fingerprint": pd.Series(dtype="object"),
+            "account": pd.Series(dtype="object"),
+            "date": pd.Series(dtype="datetime64[ns]"),
+            "memo": pd.Series(dtype="object"),
+            "amount": pd.Series(dtype="float64"),
+            "balance": pd.Series(dtype="float64"),
+            "category": pd.Series(dtype="object"),
+            "grp": pd.Series(dtype="object"),
+            "month": pd.Series(dtype="object"),
+            "is_spend": pd.Series(dtype="bool"),
+            "is_income": pd.Series(dtype="bool"),
+        }
+    )
+
+
 @cache.by_ledger
 def frame() -> pd.DataFrame:
     """
@@ -38,9 +69,7 @@ def frame() -> pd.DataFrame:
     """
     rows = db.all_transactions()
     if not rows:
-        return pd.DataFrame(
-            columns=["date", "memo", "amount", "category", "grp", "account", "month"]
-        )
+        return _empty_frame()
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"])
     df["month"] = df["date"].dt.to_period("M").astype(str)
@@ -168,17 +197,13 @@ def typical_month(df: pd.DataFrame | None = None, months: int = 6) -> dict[str, 
             2,
         ),
         "discretionary_total": round(by_group.get("discretionary", 0), 2),
-        "lumpiness": round(
-            abs(float(spd.mean()) - median_spend) / median_spend * 100, 1
-        )
+        "lumpiness": round(abs(float(spd.mean()) - median_spend) / median_spend * 100, 1)
         if median_spend
         else 0.0,
     }
 
 
-def by_category(
-    df: pd.DataFrame | None = None, months: int | None = 6
-) -> list[dict[str, Any]]:
+def by_category(df: pd.DataFrame | None = None, months: int | None = 6) -> list[dict[str, Any]]:
     """Spending by category over the recent complete months, largest first."""
     df = frame() if df is None else df
     if df.empty:
@@ -333,8 +358,11 @@ def trend(months: int = 12) -> dict[str, Any]:
         "income_before": round(prior_income, 2),
         "income_change": round(income_change, 2),
         "driver": driver,
-        "direction": "improving" if recent_net > prior_net else "worsening"
-        if recent_net < prior_net else "flat",
+        "direction": "improving"
+        if recent_net > prior_net
+        else "worsening"
+        if recent_net < prior_net
+        else "flat",
     }
 
 

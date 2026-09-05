@@ -133,7 +133,10 @@ def build_findings() -> list[Finding]:
     weeks = cash.get("runway_weeks")
     if weeks is not None:
         if weeks < 2:
-            sev, verdict = "critical", "That is not enough to absorb a car repair or a broken appliance."
+            sev, verdict = (
+                "critical",
+                "That is not enough to absorb a car repair or a broken appliance.",
+            )
         elif weeks < 4:
             sev, verdict = "high", "One unexpected bill would use most of it."
         elif weeks < 13:
@@ -354,8 +357,9 @@ def build_findings() -> list[Finding]:
 
     # ---- 10. KiwiSaver ------------------------------------------------------
     ks = next((c for c in cats if c["category"] == "kiwisaver"), None)
-    primary = hh.income.get("primary") or {}
-    if primary.get("kiwisaver_employee_pct") in (0, None) and not ks:
+    earners = hh.earners
+    contributing = any((e.get("kiwisaver_employee_pct") or 0) > 0 for e in earners)
+    if hh.region_supported and not contributing and not ks:
         ks_block = rt.block("kiwisaver")
         out.append(
             Finding(
@@ -385,9 +389,12 @@ def build_findings() -> list[Finding]:
             )
         )
 
-    # ---- 11. Mortgage -------------------------------------------------------
+    # ---- 11. Mortgage, for households that have one -------------------------
+    # Renters and mortgage-free owners get no findings here at all. Nagging
+    # somebody about a loan they do not have is the fastest way to make a tool
+    # feel like it was written for somebody else.
     loan = mortgage.from_household(hh)
-    if loan.get("available"):
+    if hh.has_mortgage and loan.get("available"):
         base = loan["base"]
         best = max(loan["scenarios"], key=lambda s: s["interest_saved"], default=None)
         out.append(
@@ -422,7 +429,7 @@ def build_findings() -> list[Finding]:
                 tags=["debt"],
             )
         )
-    elif loan.get("missing"):
+    elif hh.has_mortgage and loan.get("missing"):
         out.append(
             Finding(
                 id="mortgage_missing",
@@ -497,9 +504,7 @@ def build_findings() -> list[Finding]:
             )
 
     # ---- 13. Wins worth naming ---------------------------------------------
-    has_consumer_debt = any(
-        c["category"] in {"bnpl", "credit_card", "personal_loan"} for c in cats
-    )
+    has_consumer_debt = any(c["category"] in {"bnpl", "credit_card", "personal_loan"} for c in cats)
     if not has_consumer_debt:
         out.append(
             Finding(
@@ -527,6 +532,7 @@ def build_plan() -> list[dict[str, Any]]:
     Each step names what "done" looks like, so progress is checkable rather
     than a feeling.
     """
+    hh = config.household()
     s = cashflow.summary()
     typ = s["typical_month"]
     cash = s["cash"]
@@ -548,17 +554,18 @@ def build_plan() -> list[dict[str, Any]]:
         }
     )
 
-    steps.append(
-        {
-            "order": 2,
-            "title": "Claim what you are already entitled to",
-            "why": "It is the only step that adds income without adding hours, and it "
-            "is usually the largest single number available.",
-            "done_when": "IRD's calculator run, myIR details confirmed current, and the "
-            "entitlement checklist worked through.",
-            "status": "todo",
-        }
-    )
+    if hh.region_supported:
+        steps.append(
+            {
+                "order": 2,
+                "title": "Claim what you are already entitled to",
+                "why": "It is the only step that adds income without adding hours, and "
+                "it is usually the largest single number available.",
+                "done_when": "IRD's calculator run, myIR details confirmed current, and "
+                "the entitlement checklist worked through.",
+                "status": "todo",
+            }
+        )
 
     target = essentials if essentials else 2000
     steps.append(
@@ -568,12 +575,8 @@ def build_plan() -> list[dict[str, Any]]:
             "why": "One month of essentials in a separate account. This is what stops a "
             "car repair becoming a debt, and it is why it comes before everything else.",
             "done_when": f"{_fmt(target)} sitting in an account you do not carry a card for.",
-            "status": "done"
-            if on_hand and target and on_hand >= target
-            else "in progress",
-            "progress_pct": round(min(100, 100 * on_hand / target), 1)
-            if on_hand and target
-            else 0,
+            "status": "done" if on_hand and target and on_hand >= target else "in progress",
+            "progress_pct": round(min(100, 100 * on_hand / target), 1) if on_hand and target else 0,
         }
     )
 
@@ -611,18 +614,35 @@ def build_plan() -> list[dict[str, Any]]:
         }
     )
 
-    steps.append(
-        {
-            "order": 7,
-            "title": "Then, and only then, attack the mortgage",
-            "why": "Every extra dollar shortens the loan and saves interest - but only "
-            "once the buffer exists. Overpaying without a buffer means borrowing it back "
-            "later at a worse rate.",
-            "done_when": "An extra amount set on the loan, reviewed at each refix.",
-            "status": "todo",
-        }
-    )
+    if hh.has_mortgage:
+        steps.append(
+            {
+                "order": 7,
+                "title": "Then, and only then, attack the mortgage",
+                "why": "Every extra dollar shortens the loan and saves interest - but "
+                "only once the buffer exists. Overpaying without a buffer means "
+                "borrowing it back later at a worse rate.",
+                "done_when": "An extra amount set on the loan, reviewed at each refix.",
+                "status": "todo",
+            }
+        )
+    else:
+        steps.append(
+            {
+                "order": 7,
+                "title": "Choose what the surplus is for",
+                "why": "With no mortgage to shorten, a stable surplus needs a named "
+                "destination or it quietly becomes spending. What that destination "
+                "should be is a decision for your household - this tool deliberately "
+                "does not make investment recommendations.",
+                "done_when": "The monthly surplus has a name and an automatic payment.",
+                "status": "todo",
+            }
+        )
 
+    # Renumber so a skipped step never leaves a visible gap.
+    for i, step in enumerate(steps, start=1):
+        step["order"] = i
     return steps
 
 

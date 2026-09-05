@@ -73,7 +73,9 @@ kiwisaver:
     match_rate: 0.25
     member_contribution_for_max: 1042.86
     contribution_year: "1 July to 30 June"
-    note: "Halved in Budget 2025 from the long-standing $521.43 - VERIFY, this is exactly the kind of figure that changed recently."
+    note: >
+      Halved in Budget 2025 from the long-standing $521.43 - VERIFY, this is
+      exactly the kind of figure that changed recently.
   minimum_employee_pct: 3
   minimum_employer_pct: 3
   hardship_withdrawal_possible: true
@@ -82,11 +84,12 @@ rates_rebate:
   verified: false
   checked_on: null
   source: "https://www.govt.nz/browse/housing-and-property/getting-help-with-housing/rates-rebates/"
-  administered_by: "Your local council - for Ashhurst that is Palmerston North City Council"
+  administered_by: "Your local council - set `council` in household.yml"
   note: >
     Income-tested rebate on council rates for homeowners. The income threshold
-    rises with each dependant, which matters a great deal with three children.
-    Applications usually close 30 June for the rates year.
+    rises with each dependant, so it is worth checking even on an income that
+    looks too high at first glance. Applications usually close 30 June for the
+    rates year.
   max_rebate: 790
   income_threshold: 31510
   additional_per_dependant: 500
@@ -114,7 +117,9 @@ other_support_to_check:
       applies_to: "Homeowners can qualify, not just renters - commonly missed."
       source: "https://www.workandincome.govt.nz/products/a-z-benefits/accommodation-supplement.html"
     - name: "Disability Allowance"
-      applies_to: "Ongoing costs from a health condition, incl. prescriptions and travel to appointments."
+      applies_to: >
+        Ongoing costs from a health condition, including prescriptions and
+        travel to appointments.
       source: "https://www.workandincome.govt.nz/products/a-z-benefits/disability-allowance.html"
     - name: "Childcare Subsidy / OSCAR"
       applies_to: "Pre-schoolers and before/after-school care for school-age children."

@@ -1,8 +1,15 @@
 FROM python:3.12-slim
 
-# pdfplumber leans on these for payslip parsing.
+# libjpeg/zlib: pdfplumber leans on these for payslip parsing.
+# git: the financial-data guard uses `git ls-files` to check exactly what
+#      would be published. Without it the guard falls back to walking the
+#      filesystem, which cannot tell an ignored local household.yml from a
+#      committed one and so fails on correct behaviour.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libjpeg62-turbo zlib1g \
+# shellcheck: so `./kete lint` runs exactly the checks CI runs. A local
+#      command that passes while CI fails is worse than no local command.
+ && apt-get install -y --no-install-recommends \
+      libjpeg62-turbo zlib1g git shellcheck \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
