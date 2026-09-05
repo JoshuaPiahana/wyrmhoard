@@ -52,9 +52,12 @@ ALLOWED_ACCOUNTS = {
     "38-9014-0123456-00",
     "38-9014-0000000-01",
     "38-9014-0000000-05",
-    # An account that is deliberately NOT the household's, for testing that
-    # foreign counterparties are not treated as internal transfers.
+    # Accounts that are deliberately NOT the household's, for testing that
+    # foreign counterparties are not treated as internal transfers. Never use
+    # a real employer's or bank's account number here: the guard blocked a
+    # first draft of the tests for containing one lifted from real data.
     "99-9999-9999999-99",
+    "99-9999-9999999-98",
 }
 
 # NZ bank account: bank-branch-account-suffix.
@@ -62,6 +65,17 @@ ACCOUNT_RE = re.compile(r"\b\d{2}-\d{3,4}-\d{6,8}-\d{2,4}\b")
 
 # Long digit runs that might be a card number.
 CARD_RE = re.compile(r"\b(?:\d[ -]?){13,19}\b")
+
+# A labelled IRD number. Payslips carry one, and it is a national identifier -
+# the parser redacts it, but if one ever reaches a tracked file this blocks the
+# commit. Only the labelled form is matched: a bare 8-9 digit number is far too
+# common to reject outright, and a guard that cries wolf gets switched off.
+IRD_RE = re.compile(r"\bIRD\s*(?:Number|No\.?|#)?\s*:?\s*\d{3}[\-\s]?\d{3}[\-\s]?\d{2,3}\b", re.I)
+
+# The one obviously-synthetic IRD number the tests are allowed to contain, so
+# they can prove redaction actually works. Sequential digits, invalid as a real
+# IRD number, and nobody's.
+ALLOWED_IRD = {"123456789"}
 
 TEXT_SUFFIXES = {
     ".py",
@@ -135,6 +149,15 @@ def check(paths: list[str]) -> list[str]:
                     f"{posix}: contains what looks like a bank account number "
                     f"({account}). Use one of the synthetic values instead."
                 )
+
+        for match in set(IRD_RE.findall(text)):
+            digits = re.sub(r"\D", "", match)[-9:]
+            if digits in ALLOWED_IRD:
+                continue
+            problems.append(
+                f"{posix}: contains what looks like an IRD number ({match.strip()}). "
+                f"That is a national identifier and must never be committed."
+            )
 
         for match in set(CARD_RE.findall(text)):
             digits = re.sub(r"[ -]", "", match)

@@ -91,11 +91,17 @@ def observed_income(months: int = 12) -> dict[str, Any]:
 
 def _gross_estimate(hh, net_annual: float | None) -> tuple[float | None, str]:
     """
-    Prefer the declared salary; otherwise gross up the observed net.
+    The best available gross figure, in descending order of trustworthiness.
 
-    Sums across every earner, so a two-income household is assessed on the
-    combined figure that entitlement abatement actually uses.
+    Payslips first: abatement is assessed on gross income, and a payslip
+    states it exactly where everything else is inference.
     """
+    from .income import from_payslips
+
+    payslips = from_payslips()
+    if payslips.get("available") and payslips.get("gross_annual"):
+        return float(payslips["gross_annual"]), "from imported payslips"
+
     declared = hh.gross_income_declared
     if declared:
         return float(declared), "declared in household.yml"

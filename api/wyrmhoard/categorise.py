@@ -70,9 +70,21 @@ class Rule:
     group: str
     priority: int
     flag: bool
+    # "in", "out", or None for either. The same word means opposite things
+    # depending on which way the money went: "gift" leaving the account is
+    # something bought, "gift" arriving is money from family. Without this,
+    # one rule has to serve both and gets one of them wrong.
+    direction: str | None
     literals: tuple[str, ...]
     squashed: tuple[str, ...]
     regexes: tuple[re.Pattern[str], ...]
+
+    def applies_to(self, amount: float) -> bool:
+        if self.direction == "in":
+            return amount > 0
+        if self.direction == "out":
+            return amount < 0
+        return True
 
     def matches(self, haystack: str, squashed_haystack: str) -> bool:
         if any(lit in haystack for lit in self.literals):
@@ -105,6 +117,7 @@ def compiled_rules() -> list[Rule]:
                 group=cat.get("group", "unknown"),
                 priority=int(cat.get("priority", 50)),
                 flag=bool(cat.get("flag", False)),
+                direction=cat.get("direction"),
                 literals=clean,
                 squashed=tuple(s for s in (squash(p) for p in clean) if len(s) >= _MIN_SQUASH_LEN),
                 regexes=tuple(regexes),
@@ -123,6 +136,8 @@ def categorise_one(memo: str, amount: float = 0.0) -> tuple[str, str, str]:
     haystack = strip_noise(memo)
     squashed_haystack = squash(haystack)
     for rule in compiled_rules():
+        if not rule.applies_to(amount):
+            continue
         if rule.matches(haystack, squashed_haystack):
             group = rule.group
             # A rule can be right about the merchant but wrong about direction:

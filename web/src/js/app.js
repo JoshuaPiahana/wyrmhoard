@@ -245,6 +245,52 @@ const RENDER = {
       </tr>`).join('');
   },
 
+  payslips: el => {
+    const rows = state.payslips || [];
+    if (!rows.length) {
+      el.innerHTML = '<tr><td colspan="7" class="muted">No payslips yet. Drop a PDF above.</td></tr>';
+      return;
+    }
+    el.innerHTML = rows.map((p, i) => `
+      <tr>
+        <td>${esc(p.pay_date || '—')}</td>
+        <td>${esc(p.employee_ref || p.employer || '—')}</td>
+        <td>${esc(p.tax_code || '—')}</td>
+        <td class="n">${money(p.gross)}</td>
+        <td class="n">${money(p.net)}</td>
+        <td class="n">${money(p.ytd_gross)}</td>
+        <td><button class="btn" data-delslip="${i}">Remove</button></td>
+      </tr>`).join('');
+
+    $$('button[data-delslip]', el).forEach(btn => {
+      btn.addEventListener('click', async ev => {
+        const p = rows[Number(ev.currentTarget.dataset.delslip)];
+        ev.currentTarget.disabled = true;
+        try {
+          await api(`/payslips/${p.id}`, { method: 'DELETE' });
+        } finally {
+          await refresh();
+        }
+      });
+    });
+
+    // The income summary sits above the table and explains what the payslips
+    // add up to - including where a stated salary was deliberately ignored.
+    const inc = state.income || {};
+    const box = $('#income-summary');
+    if (!box) return;
+    if (!inc.available) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="note good">
+        <b>Gross income ${money(inc.gross_annual)} a year</b> across
+        ${inc.jobs.length} job${inc.jobs.length > 1 ? 's' : ''} —
+        ${money(inc.ytd_gross)} earned so far this tax year
+        (${Math.round(inc.fraction_elapsed * 100)}% of it elapsed).
+        This replaces the rough estimate made from bank deposits.
+      </div>
+      ${(inc.notes || []).map(n => `<div class="note warn">${esc(n)}</div>`).join('')}`;
+  },
+
   imports: el => {
     const rows = state.imports || [];
     if (!rows.length) {
@@ -521,16 +567,19 @@ function renderBanners() {
 
 async function refresh() {
   const [setup, summary, coach, recurring, entitlements, mortgage,
-         snapshots, unknowns, rules, accounts, loans, imports, backups] = await Promise.all([
+         snapshots, unknowns, rules, accounts, loans, imports, backups,
+         payslipData] = await Promise.all([
     api('/setup'), api('/summary'), api('/coach'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
-    api('/imports'), api('/backups'),
+    api('/imports'), api('/backups'), api('/payslips'),
   ]);
 
   Object.assign(state, {
     setup, summary, coach, recurring, entitlements, mortgage, snapshots, unknowns,
     accounts, loans, imports,
+    payslips: payslipData.payslips,
+    income: payslipData.income,
     backups: backups.backups,
     backupLocation: `Backups are written to ${backups.location} — inside your data folder, so copy them elsewhere too.`,
     household: { name: setup.household_name },

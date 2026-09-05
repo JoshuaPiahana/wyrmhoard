@@ -205,7 +205,7 @@ def test_an_employer_paying_wages_is_not_mistaken_for_a_household_account():
                 "date": f"2025-02-{i + 1:02d}",
                 "memo": "Salary NZ DEFENCE FORCE Wage/salary",
                 "match_text": "Salary NZ DEFENCE FORCE Wage/salary",
-                "counterparty": "03-0049-0003050-02",
+                "counterparty": "99-9999-9999999-98",
                 "amount": 2000.0,
                 "balance": 1.0,
             }

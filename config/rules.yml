@@ -48,6 +48,31 @@ categories:
     group: income
     priority: 10
     match: ["MSD", "WORK AND INCOME", "MINISTRY OF SOCIAL", "WINZ"]
+  gift_received:
+    label: "Gifts received"
+    group: income
+    priority: 8
+    direction: in
+    note: >
+      Money from family. It is real income in the sense that it arrived and
+      was spent, but it is not earned and cannot be planned on, so it is kept
+      separate from wages. A household propped up by family help deserves to
+      see that plainly rather than have it blended into "income" - not as a
+      judgement, but because the earned position is the one that has to work
+      on its own eventually.
+    match: ["re:\\bGIFT\\b", "BIRTHDAY", "KOHA", "re:\\bXMAS\\b", "CHRISTMAS"]
+
+  loan_repayment_received:
+    label: "Loan repaid to us"
+    group: transfer
+    priority: 8
+    direction: in
+    note: >
+      Somebody repaying money this household lent them. Grouped as a transfer
+      because it is capital coming back, not income: counting it would say the
+      household earned money it already had.
+    match: ["re:\\bLOAN \\d", "re:REPAY", "re:\\bLOAN REPAYMENT\\b"]
+
   income_other:
     label: "Other income"
     group: income

@@ -84,8 +84,9 @@ pretty = true
 
 [[tool.mypy.overrides]]
 # pandas' own types are a moving target; we care about our logic, not theirs.
-module = ["pandas.*", "pdfplumber.*", "yaml.*"]
+module = ["pandas.*", "numpy.*", "pdfplumber.*", "yaml.*"]
 ignore_errors = true
+follow_imports = "skip"
 
 # ---------------------------------------------------------------------------
 # pytest

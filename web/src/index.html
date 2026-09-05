@@ -320,11 +320,28 @@
         <span class="hint">Nothing is uploaded anywhere — it's parsed by the container on this machine.</span>
       </div>
       <div class="drop" id="drop">
-        <b>Drop Kiwibank CSV exports here</b><br>
-        <span class="muted">or click to choose files. Re-importing the same file is safe — duplicates are ignored.</span>
-        <input type="file" id="file" accept=".csv" multiple hidden>
+        <b>Drop bank CSV exports or payslip PDFs here</b><br>
+        <span class="muted">or click to choose files. Re-importing the same file is safe — duplicates are ignored.
+        Payslips are checked for you: if the figures don't add up, they're rejected rather than believed.</span>
+        <input type="file" id="file" accept=".csv,.pdf" multiple hidden>
       </div>
       <div id="import-result"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Payslips</h2>
+        <span class="hint">What you actually earn, before tax — which bank deposits can only ever approximate.</span>
+      </div>
+      <div id="income-summary"></div>
+      <div class="card tablewrap" tabindex="0">
+        <table>
+          <thead>
+            <tr><th>Pay date</th><th>Job</th><th>Tax code</th><th class="n">Gross</th><th class="n">Net</th><th class="n">Year to date</th><th></th></tr>
+          </thead>
+          <tbody data-list="payslips"></tbody>
+        </table>
+      </div>
     </section>
 
     <section>

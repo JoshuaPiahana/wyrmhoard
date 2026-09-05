@@ -22,6 +22,8 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from wyrmhoard import cache, categorise, db
@@ -113,7 +115,7 @@ def test_the_implied_rate_is_close_to_the_real_one():
     build_loan(rate_pct=5.0)
     loan = only_loan()
 
-    assert loan["rate_pct"] == pytest_approx(5.0, 0.4)
+    assert loan["rate_pct"] == pytest.approx(5.0, abs=0.4)
     assert loan["confidence"] == "high"
 
 
@@ -130,7 +132,7 @@ def test_offset_benefit_is_added_back_before_computing_the_rate():
     assert loan["offset_benefit"] > 0
     assert loan["interest_gross"] > loan["interest_charged"]
     # Naive maths would land far below the real rate.
-    assert loan["rate_pct"] == pytest_approx(6.0, 0.8)
+    assert loan["rate_pct"] == pytest.approx(6.0, abs=0.8)
 
 
 def test_fully_offset_periods_do_not_drag_the_rate_down():
@@ -141,7 +143,7 @@ def test_fully_offset_periods_do_not_drag_the_rate_down():
     loan = only_loan()
 
     assert loan["interest_periods"] < 26
-    assert loan["rate_pct"] == pytest_approx(6.0, 0.8)
+    assert loan["rate_pct"] == pytest.approx(6.0, abs=0.8)
 
 
 def test_an_upcoming_repayment_change_is_read_from_the_bank_notice():
@@ -180,16 +182,3 @@ def test_a_payoff_projection_is_produced_without_any_typed_input():
     assert proj["base"]["years"] > 0
     # Paying more must never take longer.
     assert proj["scenarios"][-1]["years"] <= proj["scenarios"][0]["years"]
-
-
-def pytest_approx(value: float, tolerance: float):
-    """Small local helper so the intent reads clearly in assertions."""
-
-    class _Approx:
-        def __eq__(self, other):
-            return abs(other - value) <= tolerance
-
-        def __repr__(self):
-            return f"{value} +/- {tolerance}"
-
-    return _Approx()

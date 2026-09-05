@@ -323,10 +323,17 @@ def safe_upload_name(raw_name: str | None) -> str:
 @app.post("/import")
 async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
     raw = await file.read()
+    name = safe_upload_name(file.filename)
+
+    # One drop zone for everything the household has. Working out which kind
+    # of document arrived is the tool's job, not theirs.
+    if name.lower().endswith(".pdf"):
+        return _import_payslip(raw, name)
+
     inbox = (config.DATA_DIR / "inbox").resolve()
     inbox.mkdir(parents=True, exist_ok=True)
 
-    dest = (inbox / safe_upload_name(file.filename)).resolve()
+    dest = (inbox / name).resolve()
     # Belt and braces: even with the name sanitised, confirm the final path
     # really is inside the inbox before writing anything.
     if not dest.is_relative_to(inbox):
@@ -337,6 +344,65 @@ async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
     report = ingest_file(dest)
     coverage = categorise.recategorise_all()
     return {"report": report.as_dict(), "coverage": coverage}
+
+
+def _import_payslip(raw: bytes, name: str) -> dict[str, Any]:
+    """
+    Read a payslip PDF and record it.
+
+    The PDF itself is written to data/payslips/ and never into the repo. Its
+    text is redacted of the IRD number before anything else touches it.
+    """
+    from .ingest.payslip import parse_pdf
+
+    folder = (config.DATA_DIR / "payslips").resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = (folder / name).resolve()
+    if not dest.is_relative_to(folder):
+        raise HTTPException(400, "Invalid filename.")
+    dest.write_bytes(raw)
+
+    report = parse_pdf(dest)
+    stored = 0
+    if report.confidence != "low" and report.pay_date:
+        stored = db.save_payslip(
+            {
+                "employer": report.employee_ref,
+                "source_file": name,
+                "pay_date": report.pay_date,
+                "period": report.period,
+                "employee_ref": report.employee_ref,
+                "tax_code": report.tax_code,
+                "confidence": report.confidence,
+                **report.values,
+            }
+        )
+        cache.clear_all()
+
+    return {
+        "kind": "payslip",
+        "report": report.as_dict(),
+        "stored": stored,
+        # Said plainly: a payslip that did not balance is not recorded, because
+        # a wrong salary would quietly distort every entitlement figure.
+        "accepted": bool(stored),
+    }
+
+
+@app.get("/payslips")
+def list_payslips() -> dict[str, Any]:
+    from .analysis import income
+
+    return {"payslips": db.payslips(), "income": income.from_payslips()}
+
+
+@app.delete("/payslips/{payslip_id}")
+def remove_payslip(payslip_id: int) -> dict[str, Any]:
+    removed = db.delete_payslip(payslip_id)
+    if not removed:
+        raise HTTPException(404, "No such payslip.")
+    cache.clear_all()
+    return {"removed": removed}
 
 
 @app.post("/import-inbox")

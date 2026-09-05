@@ -168,6 +168,18 @@ _ADDED_COLUMNS = {
         "match_text": "TEXT",
         "counterparty": "TEXT",
     },
+    "payslips": {
+        "period": "TEXT",
+        "employee_ref": "TEXT",
+        "tax_code": "TEXT",
+        "deductions_total": "REAL",
+        "ytd_gross": "REAL",
+        "ytd_tax": "REAL",
+        "annual_rem": "REAL",
+        "base_salary": "REAL",
+        "er_super_annual": "REAL",
+        "confidence": "TEXT",
+    },
 }
 
 
@@ -335,6 +347,64 @@ def list_backups(dest_dir: Path) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+# --------------------------------------------------------------------------
+# Payslips
+#
+# `raw` stays NULL on purpose. Payslips carry an IRD number and this tool has
+# no use for one, so the safest handling is never to hold it: the text is
+# redacted on the way in and the original is not retained.
+# --------------------------------------------------------------------------
+_PAYSLIP_FIELDS = (
+    "pay_date",
+    "employer",
+    "period",
+    "employee_ref",
+    "tax_code",
+    "gross",
+    "deductions_total",
+    "paye",
+    "kiwisaver_ee",
+    "kiwisaver_er",
+    "student_loan",
+    "acc_levy",
+    "net",
+    "ytd_gross",
+    "ytd_tax",
+    "annual_rem",
+    "base_salary",
+    "er_super_annual",
+    "confidence",
+    "source_file",
+)
+
+
+def save_payslip(data: dict[str, Any]) -> int:
+    """Insert or update one payslip. Re-importing the same slip is a no-op."""
+    row = {k: data.get(k) for k in _PAYSLIP_FIELDS}
+    columns = ", ".join(_PAYSLIP_FIELDS)
+    placeholders = ", ".join("?" for _ in _PAYSLIP_FIELDS)
+    with connect() as conn:
+        before = conn.execute("SELECT COUNT(*) FROM payslips").fetchone()[0]
+        conn.execute(
+            f"INSERT OR REPLACE INTO payslips ({columns}) VALUES ({placeholders})",
+            tuple(row[k] for k in _PAYSLIP_FIELDS),
+        )
+        after = conn.execute("SELECT COUNT(*) FROM payslips").fetchone()[0]
+    return after - before
+
+
+def payslips() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM payslips ORDER BY pay_date DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_payslip(payslip_id: int) -> int:
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM payslips WHERE id = ?", (payslip_id,))
+    return cur.rowcount
 
 
 # --------------------------------------------------------------------------
