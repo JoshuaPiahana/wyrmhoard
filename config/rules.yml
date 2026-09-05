@@ -295,6 +295,19 @@ categories:
       would be a guess dressed up as a fact.
     match: ["re:^PAY [A-Z]", "re:^PAYMENT TO [A-Z]"]
 
+  bank_notice:
+    label: "Bank notices"
+    group: transfer
+    priority: 2
+    note: >
+      Zero-dollar rows a bank posts to tell you something - most usefully
+      "From 735.44 to 722.42 due 10SEP2026", which is a repayment change
+      landing. They move no money, so they are grouped with transfers to keep
+      them out of spending, but they are read: the loan analysis uses them to
+      warn about a repayment change before it arrives.
+    match: ["re:^FROM [\\d,]+ \\d{2} TO ", "INTEREST RATE CHANGE",
+            "REPAYMENT CHANGE", "FIXED RATE EXPIR"]
+
   # ---- Bank mechanics ------------------------------------------------------
   transfer:
     label: "Internal transfer"

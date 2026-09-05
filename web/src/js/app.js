@@ -245,6 +245,51 @@ const RENDER = {
       </tr>`).join('');
   },
 
+  loans: el => {
+    const rows = state.loans || [];
+    if (!rows.length) {
+      el.innerHTML = '<p class="muted">No loan accounts found. If you have one, mark it as a loan on the Data tab.</p>';
+      return;
+    }
+    el.innerHTML = rows.map(l => {
+      const p = (l.projection && l.projection.available) ? l.projection.base : null;
+      const best = (l.projection && l.projection.available)
+        ? l.projection.scenarios.filter(s => s.extra_per_period === 50)[0] : null;
+
+      const change = l.upcoming_change ? `
+        <div class="note ${l.upcoming_change.to > l.upcoming_change.from ? 'warn' : 'info'}">
+          <b>Repayment changes on ${esc(l.upcoming_change.due)}:</b>
+          ${money(l.upcoming_change.from)} → ${money(l.upcoming_change.to)}
+          ${l.upcoming_change.to > l.upcoming_change.from
+            ? '— make sure the funding transfer covers it.'
+            : '— the difference is only saved if something claims it.'}
+        </div>` : '';
+
+      const offset = l.is_offset && l.offset_benefit ? `
+        <div class="note good">
+          <b>Offset saved ${money(l.offset_benefit)}</b> over the last ${l.months} months —
+          the balances in your other accounts reduced the interest charged here.
+        </div>` : '';
+
+      return `<div class="card" style="margin-bottom:14px">
+        <h3>…${esc(String(l.account).slice(-2))} · ${money(l.balance)} owing</h3>
+        <div class="grid g4" style="margin:12px 0">
+          <div class="stat"><div class="v">${l.rate_pct ?? '—'}%</div><div class="k">interest rate${l.rate_varied ? ', varied' : ''}</div></div>
+          <div class="stat"><div class="v">${money(l.repayment)}</div><div class="k">${esc(l.cadence || 'repayment')}</div></div>
+          <div class="stat"><div class="v">${money(l.interest_gross)}</div><div class="k">interest, last ${l.months} months</div></div>
+          <div class="stat"><div class="v">${p ? esc(String(p.payoff_date).slice(0, 4)) : '—'}</div><div class="k">clears at this rate</div></div>
+        </div>
+        ${change}${offset}
+        ${best ? `<p class="muted">An extra ${money(best.extra_per_period)} per repayment would clear it
+          ${best.years_saved.toFixed(1)} years sooner and save ${money(best.interest_saved)} —
+          worth doing only once a cash buffer exists.</p>` : ''}
+        <p class="muted" style="font-size:12.5px">
+          Derived from ${l.interest_periods} interest charges (${esc(l.confidence)} confidence).
+        </p>
+      </div>`;
+    }).join('');
+  },
+
   accounts: el => {
     const rows = state.accounts || [];
     if (!rows.length) {
@@ -407,15 +452,15 @@ function renderBanners() {
 
 async function refresh() {
   const [setup, summary, coach, recurring, entitlements, mortgage,
-         snapshots, unknowns, rules, accounts] = await Promise.all([
+         snapshots, unknowns, rules, accounts, loans] = await Promise.all([
     api('/setup'), api('/summary'), api('/coach'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
-    api('/uncategorised?limit=25'), api('/rules'), api('/accounts'),
+    api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
   ]);
 
   Object.assign(state, {
     setup, summary, coach, recurring, entitlements, mortgage, snapshots, unknowns,
-    accounts,
+    accounts, loans,
     household: { name: setup.household_name },
     headline: null,
   });

@@ -152,6 +152,18 @@ def mortgage_view() -> dict[str, Any]:
     return mortgage.from_household(config.household())
 
 
+@app.get("/loans")
+def loans() -> list[dict[str, Any]]:
+    """
+    Each loan's terms, worked out from its own transactions.
+
+    Nothing here is typed in by the household: balance, repayment, cadence,
+    interest rate and any upcoming repayment change are all derived from the
+    account's own history.
+    """
+    return mortgage.infer_loans()
+
+
 @app.get("/coach")
 def coach() -> dict[str, Any]:
     return coach_mod.summary()

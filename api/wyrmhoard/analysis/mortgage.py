@@ -14,14 +14,33 @@ needs a new clutch.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+import re
+import statistics
+from datetime import date, datetime, timedelta
 from typing import Any
+
+import pandas as pd
 
 PERIODS_PER_YEAR = {
     "weekly": 52,
     "fortnightly": 26,
     "monthly": 12,
 }
+
+# Banks announce repayment changes as their own zero-dollar transaction, e.g.
+# "From 735.44 to 722.42 due 10SEP2026". That is a rate change or a refix
+# landing, and it is worth more than most of what a budgeting tool can tell
+# somebody - so it is parsed rather than left sitting in Uncategorised.
+_REPAYMENT_NOTICE = re.compile(
+    r"FROM\s+([\d,]+\.\d{2})\s+TO\s+([\d,]+\.\d{2})\s+DUE\s+(\d{1,2}\s*[A-Z]{3}\s*\d{4})",
+    re.I,
+)
+
+# An offset loan charges interest on (balance - offset accounts), and states
+# what the arrangement saved: "LOAN INTEREST OFFSET Benefit of $8.85".
+# Ignoring it makes the implied interest rate absurdly low, because the
+# interest actually charged is only a fraction of what the balance would cost.
+_OFFSET_BENEFIT = re.compile(r"BENEFIT OF \$?([\d,]+\.?\d*)", re.I)
 
 
 def _needs(*fields: str) -> dict[str, Any]:
@@ -129,6 +148,151 @@ def scenarios(
             }
         )
     return {"available": True, "base": base, "scenarios": out}
+
+
+def _parse_notice_date(raw: str) -> str | None:
+    """'10SEP2026' or '10 SEP 2026' to an ISO date."""
+    cleaned = re.sub(r"\s+", "", raw).upper()
+    try:
+        return datetime.strptime(cleaned, "%d%b%Y").date().isoformat()
+    except ValueError:
+        return None
+
+
+def _cadence_from(dates: list[date]) -> tuple[str | None, int]:
+    """Name the rhythm of a series of payments, and how many fall in a year."""
+    if len(dates) < 3:
+        return None, 0
+    gaps = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
+    gaps = [g for g in gaps if g > 0]
+    if not gaps:
+        return None, 0
+    median = statistics.median(gaps)
+    for name, days, tol in (
+        ("weekly", 7, 2),
+        ("fortnightly", 14, 3),
+        ("monthly", 30.4, 5),
+    ):
+        if abs(median - days) <= tol:
+            return name, PERIODS_PER_YEAR[name]
+    return None, 0
+
+
+def infer_loans(months: int = 12) -> list[dict[str, Any]]:
+    """
+    Work out each loan's real terms from its own transactions.
+
+    A loan account records everything needed: repayments arrive as credits,
+    interest as debits, and the balance after each. So rather than asking a
+    household to copy figures off a statement - which they will do once, and
+    never update - the terms are derived and kept current automatically.
+
+    Three things this handles that a naive reading gets wrong:
+
+      * Repayments change. A refix or a floating rate moves them, so there is
+        no single "the repayment". The most recent one is used and the history
+        is reported.
+      * Offset loans charge interest on the balance MINUS the linked accounts.
+        Dividing interest charged by balance then implies a rate near zero.
+        The statement says what the offset saved, so it is added back to
+        recover the gross interest.
+      * A fully-offset fortnight is charged nothing at all and produces no
+        row. Summing a year and dividing understates the rate, so the rate is
+        computed per period and the median taken.
+    """
+    from .. import accounts as accounts_mod
+    from .cashflow import frame
+
+    df = frame()
+    if df.empty:
+        return []
+
+    cutoff = df["date"].max() - pd.DateOffset(months=months)
+    out: list[dict[str, Any]] = []
+
+    for account in sorted(accounts_mod.liability_accounts()):
+        rows = df[df["account"] == account].sort_values("date")
+        if rows.empty:
+            continue
+
+        with_balance = rows[rows["balance"].notna()]
+        balance = abs(float(with_balance.iloc[-1]["balance"])) if len(with_balance) else None
+
+        # Repayments: money in reduces what is owed.
+        credits = rows[rows["amount"] > 0]
+        repayment_changes: list[dict[str, Any]] = []
+        for _, r in credits.iterrows():
+            amount = round(float(r["amount"]), 2)
+            if not repayment_changes or repayment_changes[-1]["amount"] != amount:
+                repayment_changes.append(
+                    {"amount": amount, "from_date": r["date"].date().isoformat()}
+                )
+        repayment = repayment_changes[-1]["amount"] if repayment_changes else None
+        cadence, per_year = _cadence_from([d.date() for d in credits["date"]])
+
+        # Interest, grossed up for any offset benefit.
+        interest_rows = rows[(rows["category"] == "loan_interest") & (rows["date"] >= cutoff)]
+        charged = float(abs(interest_rows["amount"]).sum())
+        benefit = 0.0
+        rates: list[float] = []
+        for _, r in interest_rows.iterrows():
+            gross = abs(float(r["amount"]))
+            match = _OFFSET_BENEFIT.search(str(r["memo"]))
+            if match:
+                saved = float(match.group(1).replace(",", ""))
+                benefit += saved
+                gross += saved
+            bal = abs(float(r["balance"])) if r["balance"] and r["balance"] != 0 else None
+            if bal and per_year:
+                rates.append(gross / bal * per_year * 100)
+
+        # Upcoming repayment change, straight from the bank's own notice.
+        upcoming = None
+        for _, r in rows.iterrows():
+            m = _REPAYMENT_NOTICE.search(str(r["memo"]))
+            if not m:
+                continue
+            due = _parse_notice_date(m.group(3))
+            if due and due >= date.today().isoformat():
+                upcoming = {
+                    "from": float(m.group(1).replace(",", "")),
+                    "to": float(m.group(2).replace(",", "")),
+                    "due": due,
+                }
+
+        loan: dict[str, Any] = {
+            "account": account,
+            "balance": round(balance, 2) if balance is not None else None,
+            "repayment": repayment,
+            "cadence": cadence,
+            "periods_per_year": per_year or None,
+            "repayment_changes": repayment_changes[-6:],
+            "upcoming_change": upcoming,
+            "is_offset": benefit > 0,
+            "offset_benefit": round(benefit, 2),
+            "interest_charged": round(charged, 2),
+            "interest_gross": round(charged + benefit, 2),
+            "interest_periods": int(len(interest_rows)),
+            "months": months,
+        }
+
+        if rates:
+            loan["rate_pct"] = round(statistics.median(rates), 2)
+            loan["rate_low"] = round(min(rates), 2)
+            loan["rate_high"] = round(max(rates), 2)
+            # A wide spread means the rate moved, not that the maths is shaky.
+            loan["rate_varied"] = round(max(rates) - min(rates), 2) > 0.5
+            loan["confidence"] = "high" if len(rates) >= 6 else "low"
+        else:
+            loan["rate_pct"] = None
+            loan["confidence"] = "none"
+
+        if balance and repayment and loan.get("rate_pct") and cadence:
+            loan["projection"] = scenarios(balance, loan["rate_pct"], repayment, cadence)
+
+        out.append(loan)
+
+    return out
 
 
 def from_household(hh) -> dict[str, Any]:

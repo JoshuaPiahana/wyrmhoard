@@ -389,14 +389,135 @@ def build_findings() -> list[Finding]:
             )
         )
 
+    # ---- 10b. Loans, from the accounts themselves ---------------------------
+    # Preferred over the household.yml figures below: these are derived from
+    # the loan's own transactions, so they cannot go stale.
+    inferred_loans = mortgage.infer_loans()
+    for loan in inferred_loans:
+        if not loan.get("balance"):
+            continue
+        acct = str(loan["account"])[-2:]
+
+        if loan.get("upcoming_change"):
+            change = loan["upcoming_change"]
+            direction = "down" if change["to"] < change["from"] else "up"
+            out.append(
+                Finding(
+                    id=f"repayment_change_{acct}",
+                    title=f"Loan repayment changes on {change['due']}",
+                    severity="high" if direction == "up" else "medium",
+                    amount=abs(change["to"] - change["from"])
+                    * (loan.get("periods_per_year") or 26),
+                    body=(
+                        f"Your bank has posted a notice: the repayment moves {direction} "
+                        f"from {_fmt(change['from'])} to {_fmt(change['to'])} on "
+                        f"{change['due']}. That is "
+                        f"{_fmt(abs(change['to'] - change['from']))} per payment, about "
+                        f"{_fmt(abs(change['to'] - change['from']) * (loan.get('periods_per_year') or 26))} "
+                        "a year."
+                    ),
+                    action=(
+                        "Check the payment date lands after payday, and adjust any "
+                        "automatic transfer that funds it."
+                        if direction == "up"
+                        else "If the repayment is dropping, the difference is only saved "
+                        "if something claims it. Decide now where it goes."
+                    ),
+                    evidence="Read from the bank's own notice in the loan account.",
+                    tags=["debt"],
+                )
+            )
+
+        if loan.get("is_offset") and loan.get("offset_benefit"):
+            out.append(
+                Finding(
+                    id=f"offset_benefit_{acct}",
+                    title=f"Your offset arrangement saved {_fmt(loan['offset_benefit'])}",
+                    severity="win",
+                    amount=loan["offset_benefit"],
+                    body=(
+                        f"Over the last {loan['months']} months the balances in your "
+                        "everyday and savings accounts reduced the interest charged on "
+                        f"this loan by {_fmt(loan['offset_benefit'])}. Money sitting in "
+                        "those accounts is quietly working, which is worth knowing when "
+                        "deciding where to keep a buffer."
+                    ),
+                    tags=["strength", "debt"],
+                )
+            )
+
+        if loan.get("rate_pct"):
+            projection = loan.get("projection") or {}
+            overpay = ""
+            if projection.get("available"):
+                options: list[dict[str, Any]] = projection["scenarios"]
+                best = max(options, key=lambda s: s["interest_saved"], default=None)
+                if best is not None and best["extra_per_period"]:
+                    overpay = (
+                        f" Paying an extra {_fmt(best['extra_per_period'])} per repayment "
+                        f"would clear it {best['years_saved']:.1f} years sooner and save "
+                        f"{_fmt(best['interest_saved'])}."
+                    )
+            varied = (
+                " The rate moved during this period, so treat it as a recent average "
+                "rather than a fixed figure."
+                if loan.get("rate_varied")
+                else ""
+            )
+            weekly = loan["balance"] * loan["rate_pct"] / 100 / 52
+            out.append(
+                Finding(
+                    id=f"loan_{acct}",
+                    title=(
+                        f"Loan ...{acct}: {_fmt(loan['balance'])} at " f"about {loan['rate_pct']}%"
+                    ),
+                    severity="low",
+                    amount=loan["interest_gross"],
+                    body=(
+                        f"Worked out from the account itself, not typed in: "
+                        f"{_fmt(loan['balance'])} owing, repayments of "
+                        f"{_fmt(loan.get('repayment'))} {loan.get('cadence') or ''}, and "
+                        f"{_fmt(loan['interest_gross'])} of interest over the last "
+                        f"{loan['months']} months. That is about {_fmt(weekly)} a week "
+                        "in interest alone." + varied + overpay
+                    ),
+                    action=(
+                        "Worth acting on only after the buffer and sinking funds exist. "
+                        "Overpaying a loan while there is no cash for a car repair usually "
+                        "ends with borrowing it back at a worse rate."
+                    ),
+                    evidence=(
+                        f"Derived from {loan['interest_periods']} interest charges "
+                        f"({loan.get('confidence')} confidence)."
+                    ),
+                    tags=["debt"],
+                )
+            )
+
     # ---- 11. Mortgage, for households that have one -------------------------
     # Renters and mortgage-free owners get no findings here at all. Nagging
     # somebody about a loan they do not have is the fastest way to make a tool
     # feel like it was written for somebody else.
-    loan = mortgage.from_household(hh)
-    if hh.has_mortgage and loan.get("available"):
-        base = loan["base"]
-        best = max(loan["scenarios"], key=lambda s: s["interest_saved"], default=None)
+    # Skipped entirely when the loan accounts told us the terms themselves -
+    # asking somebody to type in a rate the tool already worked out is noise.
+    # Named `declared` rather than `loan`: the loop above already binds `loan`
+    # to an inferred loan, and reusing the name for a config-derived one made
+    # the two indistinguishable at a glance.
+    declared: dict[str, Any] = {} if inferred_loans else mortgage.from_household(hh)
+    if hh.has_mortgage and declared.get("available"):
+        base = declared["base"]
+        # Typed local: with a bare Any iterable, mypy resolves max()'s
+        # default=None overload in a way that types the lambda parameter as
+        # optional too.
+        declared_options: list[dict[str, Any]] = declared["scenarios"]
+        declared_best = max(declared_options, key=lambda s: s["interest_saved"], default=None)
+        declared_overpay = ""
+        if declared_best is not None and declared_best["extra_per_period"]:
+            declared_overpay = (
+                f" Paying an extra {_fmt(declared_best['extra_per_period'])} per repayment "
+                f"would clear it {declared_best['years_saved']:.1f} years sooner and save "
+                f"{_fmt(declared_best['interest_saved'])}."
+            )
         out.append(
             Finding(
                 id="mortgage",
@@ -404,17 +525,11 @@ def build_findings() -> list[Finding]:
                 severity="low",
                 amount=base["total_interest"],
                 body=(
-                    f"{_fmt(loan['balance'])} at {loan['interest_rate_pct']}%. On the "
-                    f"current repayment that is {base['years']:.1f} more years and "
+                    f"{_fmt(declared['balance'])} at {declared['interest_rate_pct']}%. On "
+                    f"the current repayment that is {base['years']:.1f} more years and "
                     f"{_fmt(base['total_interest'])} of interest. Right now the loan costs "
-                    f"about {_fmt(loan.get('interest_per_week_now'))} a week in interest alone."
-                    + (
-                        f" Paying an extra {_fmt(best['extra_per_period'])} per repayment "
-                        f"would clear it {best['years_saved']:.1f} years sooner and save "
-                        f"{_fmt(best['interest_saved'])}."
-                        if best and best["extra_per_period"]
-                        else ""
-                    )
+                    f"about {_fmt(declared.get('interest_per_week_now'))} a week in "
+                    "interest alone." + declared_overpay
                 ),
                 action=(
                     "Worth doing only after the buffer and sinking funds exist. Overpaying "
@@ -422,14 +537,14 @@ def build_findings() -> list[Finding]:
                     "borrowing the money back at a much higher rate."
                 ),
                 evidence=(
-                    f"Fixed until {loan['fixed_until']}."
-                    if loan.get("fixed_until")
+                    f"Fixed until {declared['fixed_until']}."
+                    if declared.get("fixed_until")
                     else "Set `fixed_until` in household.yml to get a refix reminder."
                 ),
                 tags=["debt"],
             )
         )
-    elif hh.has_mortgage and loan.get("missing"):
+    elif hh.has_mortgage and declared.get("missing"):
         out.append(
             Finding(
                 id="mortgage_missing",
@@ -440,7 +555,7 @@ def build_findings() -> list[Finding]:
                     "the payoff maths cannot run. They are on your Kiwibank loan summary "
                     "and take two minutes to copy across."
                 ),
-                action=f"Fill in: {', '.join(loan['missing'])} in config/household.yml.",
+                action=f"Fill in: {', '.join(declared['missing'])} in config/household.yml.",
                 tags=["setup"],
             )
         )
