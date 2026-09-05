@@ -251,6 +251,26 @@ def rules() -> dict[str, Any]:
     return base
 
 
+def declared_categories() -> dict[str, str]:
+    """
+    The categories rules.yml itself defines, as key -> label.
+
+    Deliberately reads rules.yml alone rather than `rules()`, and is the list
+    anything validating a proposed category must check against. The merged
+    view includes learned.yml, so validating against it would let one invented
+    category authorise the next: a typo written once would then be a category
+    forever, and the spending filed under it would sit outside every group the
+    coaching maths knows about.
+
+    Uncached on purpose. It is read when a rule is being taught, which is rare,
+    and an uncached read cannot go stale against a file somebody just edited.
+    """
+    base = _load_yaml(CONFIG_DIR / "rules.yml")
+    return {
+        key: (cat or {}).get("label", key) for key, cat in (base.get("categories") or {}).items()
+    }
+
+
 @lru_cache(maxsize=1)
 def rates() -> Rates:
     return Rates(_load_yaml(CONFIG_DIR / "nz_rates.yml"))

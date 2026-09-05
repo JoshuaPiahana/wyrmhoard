@@ -28,6 +28,13 @@ Three rules shape every tool below.
       simply arriving in an account it had not been given. Knowing the shape
       of the hole matters as much as the figures around it.
 
+One tool writes a judgement down. Everything else here computes;
+`teach_category` takes a decision only a person or a model can make - what
+"SP QUAYSIDE 4829" is - and records it as a rule the household can read and
+edit. That is the division of labour made concrete. Interpret it once, and
+Wyrmhoard applies that interpretation identically every month afterwards
+rather than having it guessed at afresh each time somebody asks.
+
 Run it over stdio, which is how local agents launch tools and keeps the
 transport off the network entirely:
 
@@ -60,6 +67,12 @@ server = MCPServer(
         "Prefer the summary tools. `list_transactions` returns raw records "
         "including merchant names and should only be used when the user has "
         "asked something that genuinely needs them.\n\n"
+        "When coverage is low, there is something you can do about it. "
+        "`get_uncategorised` groups the unrecognised spending by merchant, and "
+        "`teach_category` records what you work out as a durable rule. A "
+        "public ruleset can name supermarkets and power companies but never "
+        "someone's local takeaway; you can ask, and the answer then holds "
+        "every month instead of being guessed at again.\n\n"
         "This is arithmetic on a household's own records, not regulated "
         "financial advice. Entitlement figures are estimates; the tax office "
         "is authoritative."
@@ -313,6 +326,132 @@ def get_recommendations() -> dict[str, Any]:
     option, and do not moralise about past spending.
     """
     return {**coach_mod.summary(), "provenance": _provenance()}
+
+
+# ---------------------------------------------------------------------------
+# Categorisation
+# ---------------------------------------------------------------------------
+@server.tool()
+def get_uncategorised(limit: int = 50) -> dict[str, Any]:
+    """
+    Spending no rule recognised, grouped by merchant, biggest first.
+
+    This is the work an agent is genuinely better at than the tool. Wyrmhoard
+    can normalise "POS W/D SP QUAYSIDE 4829" into a stable merchant string and
+    count what it cost; it cannot know what that shop is. You often can, or
+    can ask the household in one question.
+
+    Groups rather than rows, deliberately. Thirty visits to the same takeaway
+    are one decision, not thirty, and the group carries the count and the
+    total so the expensive unknowns are obvious.
+
+    Money going out only. An unrecognised deposit will not appear here;
+    `describe_data_gaps` is where unexplained income shows up.
+
+    Pair with `teach_category`, using a key from `valid_categories`.
+
+    Args:
+        limit: how many merchant groups to return.
+    """
+    groups = categorise.top_uncategorised(limit=limit)
+    cover = categorise.coverage()
+    return {
+        "groups": [
+            {
+                "merchant": g["memo"],
+                "example_memo": g["example"],
+                "count": g["count"],
+                "total": g["total"],
+            }
+            for g in groups
+        ],
+        "returned": len(groups),
+        "uncategorised_spend": cover["uncategorised_spend"],
+        "uncategorised_count": cover["uncategorised_count"],
+        "valid_categories": config.declared_categories(),
+        "next_step": (
+            "Identify each merchant, then call `teach_category` with a distinctive "
+            "fragment of its name and one of `valid_categories`. Ask the household "
+            "about anything you cannot place - a wrong guess becomes a rule."
+        ),
+        "privacy_note": (
+            "These name where the household shops. They are here so unknown "
+            "merchants can be identified; use them for that and do not repeat them "
+            "wholesale."
+        ),
+        "provenance": _provenance(),
+    }
+
+
+@server.tool()
+def teach_category(match: str, category: str) -> dict[str, Any]:
+    """
+    Teach the tool a merchant. This writes a rule to disk.
+
+    The rule goes into config/learned.yml on the household's machine, which is
+    merged over the public ruleset on every categorisation run. That is the
+    point: an answer worked out once is then applied the same way every month,
+    rather than being re-judged - and possibly judged differently - each time
+    somebody looks at the ledger.
+
+    `match` is a fragment of the merchant string, matched case-insensitively
+    against the memo with punctuation ignored, so "PAK N SAVE" catches
+    "PAK'nSAVE" too. Prefix it with "re:" for a regular expression, which is
+    how a short or ambiguous token gets word boundaries.
+
+    `category` must be one rules.yml already defines - `get_uncategorised`
+    returns the list. A rule can teach a new merchant but never a new
+    category, because a category carries a group and the group drives the
+    coaching maths.
+
+    Categorisation is re-run immediately, and the reply says how many
+    transactions the new rule actually claimed. Zero means the pattern is
+    wrong, not that the work is done.
+
+    Args:
+        match: a distinctive fragment of the merchant name, or "re:<regex>".
+        category: the category key to file it under.
+    """
+    try:
+        result = categorise.learn(match, category)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "valid_categories": config.declared_categories(),
+        }
+
+    if result["already_known"]:
+        note = (
+            f"'{result['pattern']}' was already recorded against "
+            f"{result['label']}, so nothing changed."
+        )
+    elif result["matched"] == 0:
+        note = (
+            "Saved, but it matched nothing currently uncategorised. Check it against "
+            "the merchant strings from `get_uncategorised` - a pattern that matches "
+            "nothing is worse than none, because it looks like the gap was closed."
+        )
+    else:
+        note = (
+            f"{result['matched']} transactions are now filed under "
+            f"{result['label']}, and future ones will be too."
+        )
+
+    return {
+        "ok": True,
+        "learned": {
+            "match": result["pattern"],
+            "category": result["category"],
+            "label": result["label"],
+        },
+        "matched": result["matched"],
+        "already_known": result["already_known"],
+        "written_to": result["path"],
+        "coverage": result["coverage"],
+        "note": note,
+        "provenance": _provenance(),
+    }
 
 
 # ---------------------------------------------------------------------------

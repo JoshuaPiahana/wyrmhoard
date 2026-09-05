@@ -20,19 +20,26 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from wyrmhoard import cache, categorise, db, mcp_server
+from wyrmhoard import cache, categorise, config, db, mcp_server
 from wyrmhoard.ingest import parse_csv
 
 ACCOUNT = "38-9014-0123456-00"
 OUTSIDE = "99-9999-9999999-99"
+
+# Merchants no public rule can place, which is the whole point of the long
+# tail: a supermarket is in rules.yml, the shop on the corner never will be.
+UNKNOWN = "SP QUAYSIDE 4829"
+OTHER_UNKNOWN = "EFTPOS ARROWFIELD LTD"
 
 
 def load_some_data(rows: int = 8):
@@ -48,10 +55,51 @@ def load_some_data(rows: int = 8):
     categorise.recategorise_all()
 
 
+def load_unknown_spending(memo: str, rows: int = 3, amount: float = -12.50):
+    """Spending no rule in rules.yml can claim."""
+    lines = ["Account number,Date,Memo,Amount,Balance"]
+    day = date(2025, 3, 1)
+    for _ in range(rows):
+        lines.append(f"{ACCOUNT},{day.strftime('%d-%m-%Y')},{memo},{amount:.2f},500.00")
+        day += timedelta(days=1)
+    parsed, _ = parse_csv("\n".join(lines), "unknown.csv")
+    db.insert_transactions(parsed, "unknown.csv")
+    cache.clear_all()
+    categorise.recategorise_all()
+
+
 def registered_tools() -> dict[str, str]:
     """Name -> description, as an agent would receive them."""
     tools = asyncio.run(mcp_server.server.list_tools())
     return {t.name: (t.description or "") for t in tools}
+
+
+@pytest.fixture
+def private_config(tmp_path, monkeypatch):
+    """
+    A config directory of the test's own, holding only the public files.
+
+    Teaching a rule writes to disk. Without this it writes into whichever
+    config/ the suite was launched against, which on a development machine is
+    the household's own. household.yml and learned.yml are deliberately not
+    copied either: a developer with real learned rules already present must
+    get the same result as CI running with none.
+    """
+    private = tmp_path / "config"
+    private.mkdir()
+    for name in ("rules.yml", "nz_rates.yml", "household.example.yml"):
+        source = config.CONFIG_DIR / name
+        if source.exists():
+            shutil.copy(source, private / name)
+
+    monkeypatch.setattr(config, "CONFIG_DIR", private)
+    config.reload()
+    categorise.compiled_rules.cache_clear()
+
+    yield private
+
+    config.reload()
+    categorise.compiled_rules.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +115,8 @@ def test_the_expected_tools_are_exposed():
         "get_income",
         "get_entitlements",
         "get_recommendations",
+        "get_uncategorised",
+        "teach_category",
         "import_document",
         "take_snapshot",
         "list_transactions",
@@ -238,3 +288,91 @@ def test_an_unreadable_file_is_reported_not_swallowed(tmp_path):
     result = mcp_server.import_document(str(junk))
     assert result["ok"] is False
     assert result["report"]["confidence"] == "low"
+
+
+# ---------------------------------------------------------------------------
+# The categorisation long tail
+# ---------------------------------------------------------------------------
+def test_the_write_tool_says_that_it_writes():
+    """An agent has to know a call has consequences before it makes it."""
+    description = registered_tools()["teach_category"]
+    assert "writes" in description.lower()
+    assert "learned.yml" in description
+
+
+def test_uncategorised_spending_comes_back_grouped_by_merchant(private_config):
+    """
+    Grouping is what makes this usable. One takeaway visited thirty times is a
+    single question to answer, and an agent handed thirty rows would have to
+    work that out for itself - over a response thirty times the size.
+    """
+    load_unknown_spending(UNKNOWN, rows=3, amount=-12.50)
+    load_unknown_spending(OTHER_UNKNOWN, rows=1, amount=-40.00)
+
+    result = mcp_server.get_uncategorised()
+    groups = {g["merchant"]: g for g in result["groups"]}
+
+    assert result["returned"] == 2, f"four transactions did not collapse to two: {groups}"
+    assert groups[UNKNOWN]["count"] == 3
+    assert groups[UNKNOWN]["total"] == 37.50
+    # Grouped on the cleaned memo, so the bank's plumbing does not split a
+    # merchant across two groups.
+    assert groups["ARROWFIELD LTD"]["count"] == 1
+
+
+def test_an_invented_category_is_refused_before_anything_is_written(private_config):
+    """
+    A category carries a group, and the group drives the coaching maths. A
+    model that could invent one would file spending outside every group the
+    maths knows about - and the typo would be permanent.
+    """
+    load_unknown_spending(UNKNOWN, rows=2)
+
+    result = mcp_server.teach_category(match="QUAYSIDE", category="artisanal_cheese")
+
+    assert result["ok"] is False
+    assert "artisanal_cheese" in result["error"]
+    assert "groceries" in result["valid_categories"], "the error must say what is allowed"
+    assert not (private_config / "learned.yml").exists(), "a refused category still wrote a rule"
+
+
+def test_a_pattern_too_short_to_match_safely_is_refused(private_config):
+    """A two-letter literal appears inside unrelated memos, and miscounts silently."""
+    result = mcp_server.teach_category(match="AA", category="takeaways")
+
+    assert result["ok"] is False
+    # The suggested way out has to be usable as written. An escape mangled in
+    # the message hands back a pattern that does not mean what it says.
+    assert r"re:\bAA\b" in result["error"], "the error should offer a working regex"
+
+
+def test_a_taught_rule_lands_where_config_rules_reads_it(private_config):
+    load_unknown_spending(UNKNOWN, rows=2)
+
+    mcp_server.teach_category(match="QUAYSIDE", category="takeaways")
+
+    learned = yaml.safe_load((private_config / "learned.yml").read_text(encoding="utf-8"))
+    assert learned["categories"]["takeaways"]["match"] == ["QUAYSIDE"]
+
+    # The shape only matters because config.rules() has to merge it, so assert
+    # on the merge rather than on the file alone.
+    merged = config.rules()["categories"]["takeaways"]
+    assert "QUAYSIDE" in merged["match"]
+    assert merged["group"] == "discretionary", "a learned pattern must not change the group"
+
+    # rules.yml is public. A household's local merchants must never reach it.
+    assert "QUAYSIDE" not in (private_config / "rules.yml").read_text(encoding="utf-8")
+
+
+def test_teaching_reports_how_many_transactions_it_caught(private_config):
+    load_unknown_spending(UNKNOWN, rows=5)
+    load_unknown_spending(OTHER_UNKNOWN, rows=2)
+
+    result = mcp_server.teach_category(match="QUAYSIDE", category="takeaways")
+
+    assert result["ok"] is True
+    assert result["matched"] == 5, "the count is this rule's matches, not the whole category"
+
+    # And the caller can see the effect without a second round trip.
+    remaining = [g["merchant"] for g in mcp_server.get_uncategorised()["groups"]]
+    assert remaining == ["ARROWFIELD LTD"]

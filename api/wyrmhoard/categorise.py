@@ -16,7 +16,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from . import config, db
 
@@ -249,18 +252,24 @@ def coverage() -> dict[str, Any]:
     }
 
 
+def is_unknown(tx: dict[str, Any]) -> bool:
+    """
+    True when no rule has claimed this transaction.
+
+    Both columns are checked because they can disagree: an override naming a
+    category we no longer have a rule for leaves the group `unknown` while the
+    category reads as something real.
+    """
+    return tx.get("category") in (None, "uncategorised") or tx.get("grp") == "unknown"
+
+
 def top_uncategorised(limit: int = 25) -> list[dict[str, Any]]:
     """
     The fastest path to good coverage: fix the biggest unknowns first.
 
     Grouped by cleaned memo so one decision can cover thirty transactions.
     """
-    rows = [
-        tx
-        for tx in db.all_transactions()
-        if (tx.get("category") in (None, "uncategorised") or tx.get("grp") == "unknown")
-        and tx["amount"] < 0
-    ]
+    rows = [tx for tx in db.all_transactions() if is_unknown(tx) and tx["amount"] < 0]
     buckets: dict[str, dict[str, Any]] = {}
     for tx in rows:
         key = strip_noise(tx["memo"])[:40] or "(blank)"
@@ -274,3 +283,147 @@ def top_uncategorised(limit: int = 25) -> list[dict[str, Any]]:
     for b in out:
         b["total"] = round(b["total"], 2)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Teaching
+# ---------------------------------------------------------------------------
+# A shorter literal matches as a substring inside unrelated memos, and one bad
+# pattern quietly miscounts every month after it. Three is what rules.yml
+# itself already risks ("IRD", "MSD"); below that, use a regex, where \b puts
+# the word boundaries back explicitly.
+_MIN_PATTERN_CHARS = 3
+
+# Long enough for any merchant, short enough to reject a whole memo pasted in
+# wholesale - those carry reference numbers that differ between transactions,
+# so a rule built from one matches exactly the transaction it came from.
+_MAX_PATTERN_CHARS = 80
+
+_LEARNED_HEADER = """\
+# ===========================================================================
+# learned.yml - patterns taught to this household's copy of Wyrmhoard.
+#
+# Merged over config/rules.yml on every categorisation run, so a pattern here
+# takes effect without touching the public ruleset. Only `match` is read for a
+# category rules.yml already defines, which means nothing learned here can
+# change a category's group or label - and so nothing learned here can quietly
+# move spending between essential and discretionary.
+#
+# Safe to edit by hand: it is plain YAML, re-read on every run. Comments other
+# than this header do not survive the next taught rule, so keep notes of your
+# own somewhere they will last.
+#
+# This file is gitignored and must stay that way. rules.yml is public and
+# generic; this one fills up with a household's actual merchants - their
+# corner shop, their piano teacher, their doctor - which is a picture of how a
+# family lives.
+# ===========================================================================
+"""
+
+
+def learned_path() -> Path:
+    """Resolved at call time, so a redirected config directory is honoured."""
+    return config.CONFIG_DIR / "learned.yml"
+
+
+def _check_pattern(pattern: str) -> None:
+    """Refuse a pattern that would cost more in false matches than it fixes."""
+    if not pattern:
+        raise ValueError("A pattern is required: a distinctive fragment of the merchant name.")
+    if len(pattern) > _MAX_PATTERN_CHARS:
+        raise ValueError(
+            f"Pattern is {len(pattern)} characters, over the {_MAX_PATTERN_CHARS} allowed. "
+            "Use the part of the memo that names the merchant, not the whole line - the "
+            "reference numbers around it differ between transactions."
+        )
+    if pattern.startswith("re:"):
+        try:
+            re.compile(pattern[3:], re.IGNORECASE)
+        except re.error as exc:
+            # compiled_rules() drops a bad regex silently, which would look
+            # like a rule that simply never matches anything.
+            raise ValueError(f"'{pattern}' is not a valid regular expression: {exc}") from exc
+        return
+    if len(squash(pattern)) < _MIN_PATTERN_CHARS:
+        raise ValueError(
+            f"'{pattern}' is too short to match on safely - it would appear inside "
+            "unrelated memos. Use a longer fragment, or a regex with word boundaries: "
+            rf'"re:\b{squash(pattern)}\b".'
+        )
+
+
+def _append_pattern(category: str, pattern: str) -> bool:
+    """Write the pattern into learned.yml. False if it was already there."""
+    path = learned_path()
+    doc: dict[str, Any] = {}
+    if path.exists():
+        with path.open("r", encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh) or {}
+
+    patterns = doc.setdefault("categories", {}).setdefault(category, {}).setdefault("match", [])
+    # Compared on the normalised form because that is what matching uses:
+    # "PAK'nSAVE" and "PAK N SAVE" are one rule, not two.
+    if normalise(pattern) in {normalise(str(p)) for p in patterns}:
+        return False
+
+    patterns.append(pattern)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # width is set high so a long pattern is never folded across lines; the
+    # cap above keeps the result inside the project's 100-column yamllint.
+    body = yaml.safe_dump(
+        doc, sort_keys=True, default_flow_style=False, allow_unicode=True, width=200
+    )
+    path.write_text(_LEARNED_HEADER + body, encoding="utf-8")
+    return True
+
+
+def learn(pattern: str, category: str) -> dict[str, Any]:
+    """
+    Record one pattern against a category, then re-run categorisation.
+
+    This is how the long tail gets fixed. A public ruleset can cover
+    supermarkets and power companies; it can never cover a particular town's
+    takeaway shop, and only the household knows what "SP QUAYSIDE 4829" was.
+    Writing that answer into config/learned.yml turns it into a rule that
+    decides the same way every month, rather than a judgement made afresh -
+    and possibly differently - each time somebody looks at the ledger.
+
+    The category must already exist in rules.yml. A pattern can teach the tool
+    a merchant it has never seen; it cannot invent a category, because a
+    category carries a group and the group drives the coaching maths.
+
+    Raises ValueError, with wording a caller can pass straight to whoever
+    asked, when the category is unknown or the pattern is unsafe to match on.
+    """
+    pattern = (pattern or "").strip()
+    labels = config.declared_categories()
+    if category not in labels:
+        raise ValueError(
+            f"Unknown category '{category}'. It must be one rules.yml already defines: "
+            f"{', '.join(sorted(labels))}."
+        )
+    _check_pattern(pattern)
+
+    # Snapshotted before the write, so the count reported afterwards is what
+    # this rule actually claimed rather than everything in the category.
+    unknown_before = {tx["fingerprint"] for tx in db.all_transactions() if is_unknown(tx)}
+    added = _append_pattern(category, pattern)
+
+    # recategorise_all() reloads config first, so the pattern just written is
+    # compiled before anything is matched against it.
+    cover = recategorise_all()
+
+    matched = sum(
+        1
+        for tx in db.all_transactions()
+        if tx["fingerprint"] in unknown_before and tx["category"] == category
+    )
+    return {
+        "pattern": pattern,
+        "category": category,
+        "label": labels[category],
+        "already_known": not added,
+        "matched": matched,
+        "path": str(learned_path()),
+        "coverage": cover,
+    }
