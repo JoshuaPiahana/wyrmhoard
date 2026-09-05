@@ -1,32 +1,32 @@
 # Deliberately small. Every dependency here is one more thing that can rot in
 # three years, and this tool needs to still run in three years.
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
-pydantic==2.10.4
-pandas==2.2.3
-PyYAML==6.0.2
-Jinja2==3.1.5
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+pydantic==2.13.5
+pandas==3.0.5
+PyYAML==6.0.3
+Jinja2==3.1.6
 python-dateutil==2.9.0.post0
-pdfplumber==0.11.5
-typer==0.15.1
+pdfplumber==0.11.10
+typer==0.27.2
 # Pinned deliberately. typer 0.15 calls click's Parameter.make_metavar()
 # without a ctx argument, which click 8.2 made mandatory - so an unpinned
 # click silently breaks every CLI command with:
 #   TypeError: make_metavar() missing 1 required positional argument: 'ctx'
 # It only shows up on a fresh install, which is why an image built before
 # click 8.2 kept working while a new clone did not.
-click==8.1.8
-rich==13.9.4
+click==8.5.0
+rich==15.0.0
 
 # Development tooling, kept in the same image on purpose. One image that
 # behaves identically on your laptop and in CI is worth far more here than a
 # lean one - and a check you need a second image to run is a check that
 # stops being run.
-pytest==8.3.4
+pytest==9.1.1
 httpx==0.28.1                 # FastAPI TestClient transport
-ruff==0.8.6
-mypy==1.14.1
-yamllint==1.35.1
-types-PyYAML==6.0.12.20241230
-types-python-dateutil==2.9.0.20241206
+ruff==0.16.5
+mypy==2.3.1
+yamllint==1.38.0
+types-PyYAML==6.0.12.20260815
+types-python-dateutil==2.9.0.20260807
