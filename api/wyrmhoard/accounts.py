@@ -215,7 +215,7 @@ def likely_missing_accounts() -> list[dict[str, Any]]:
         out.append(
             {
                 "account": account,
-                "transfers": int(len(chunk)),
+                "transfers": len(chunk),
                 "total": round(float(chunk["amount"].sum()), 2),
                 "first_seen": chunk["date"].min().date().isoformat(),
                 "last_seen": chunk["date"].max().date().isoformat(),

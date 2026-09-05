@@ -272,7 +272,7 @@ def infer_loans(months: int = 12) -> list[dict[str, Any]]:
             "offset_benefit": round(benefit, 2),
             "interest_charged": round(charged, 2),
             "interest_gross": round(charged + benefit, 2),
-            "interest_periods": int(len(interest_rows)),
+            "interest_periods": len(interest_rows),
             "months": months,
         }
 

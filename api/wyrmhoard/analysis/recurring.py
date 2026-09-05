@@ -120,7 +120,7 @@ def detect(min_occurrences: int = 3, months: int = 12) -> list[dict[str, Any]]:
                 "label": rule.label if rule else cat,
                 "group": rule.group if rule else "unknown",
                 "cadence": cadence,
-                "occurrences": int(len(chunk)),
+                "occurrences": len(chunk),
                 "typical_amount": round(float(amounts.median()), 2),
                 "amount_varies": not stable,
                 "annual_cost": round(float(amounts.median()) * PER_YEAR[cadence], 2),

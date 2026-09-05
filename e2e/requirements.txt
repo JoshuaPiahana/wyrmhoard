@@ -1,3 +1,10 @@
+# Browser tests only. Installed into the Playwright image at run time.
+#
+# `playwright` must stay equal to the image tag in docker-compose.yml
+# (mcr.microsoft.com/playwright/python:v<version>-noble). The image ships the
+# browser binaries for its own version, so bumping one without the other
+# fails inside Playwright's startup and reads like a broken test rather than a
+# mismatched pin. test_layering.py asserts the two agree.
 pytest==8.3.4
 pytest-playwright==0.6.2
 playwright==1.49.1

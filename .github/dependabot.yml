@@ -37,6 +37,17 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
 
+  # The Playwright image in docker-compose.yml. Watched separately from /api
+  # because the two live in different directories, and it must move in step
+  # with the `playwright` pin in e2e/requirements.txt - the image carries the
+  # browser binaries for its own version. Dependabot will raise the two bumps
+  # as separate PRs and neither passes alone, so merge them together;
+  # test_layering.py fails loudly if they drift.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -105,7 +105,7 @@ def monthly(df: pd.DataFrame | None = None) -> list[dict[str, Any]]:
                 "savings_rate_pct": round(100 * (income - spend) / income, 1)
                 if income > 0
                 else None,
-                "transactions": int(len(chunk)),
+                "transactions": len(chunk),
             }
         )
     return sorted(out, key=lambda r: r["month"])
@@ -262,7 +262,7 @@ def small_leaks(df: pd.DataFrame | None = None, months: int = 6) -> dict[str, An
     return {
         "available": True,
         "threshold": threshold,
-        "count": int(len(sub)),
+        "count": len(sub),
         "total": round(total, 2),
         "per_month": round(total / n_months, 2),
         "per_year": round(total / n_months * 12, 2),

@@ -51,11 +51,11 @@ def observed_support(months: int = 12) -> dict[str, Any]:
         "window_days": int(span_days),
         "ird_total": round(ird_total, 2),
         "ird_annualised": round(ird_total * scale, 2),
-        "ird_payments": int(len(ird)),
+        "ird_payments": len(ird),
         "ird_last_seen": ird["date"].max().date().isoformat() if len(ird) else None,
         "msd_total": round(msd_total, 2),
         "msd_annualised": round(msd_total * scale, 2),
-        "msd_payments": int(len(msd)),
+        "msd_payments": len(msd),
         "receiving_anything": bool(len(ird) or len(msd)),
     }
 

@@ -18,6 +18,7 @@ anywhere and names the offending file when it fails.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -125,3 +126,46 @@ def test_the_requirements_files_match_the_layers():
         assert package not in core, f"{package} is pinned in the core requirements"
     assert "fastapi" in web
     assert "pandas" in (api_dir / "requirements-core.txt").read_text(encoding="utf-8").lower()
+
+
+# ---------------------------------------------------------------------------
+# Tooling versions that must move together
+# ---------------------------------------------------------------------------
+def test_the_playwright_package_matches_the_image_that_ships_its_browsers():
+    """
+    The Playwright image ships browser binaries built for one exact version,
+    so `playwright==X` in e2e/requirements.txt and the `:vX-noble` image tag
+    in docker-compose.yml are a single decision recorded in two files.
+
+    Nothing connected them, and nothing could: Dependabot's pip updater
+    watches e2e/ while its docker updater watches api/, so a version bump
+    arrives as one PR that changes the package and leaves the image behind.
+    The browser tests then fail somewhere deep in Playwright's own startup,
+    which reads like a broken test rather than a mismatched pin.
+    """
+    # Runs both on the host (CI) and inside the api container, where only the
+    # package is mounted and the repo root appears at /repo - the same pattern
+    # as the e2e isolation guard in test_accounts.py.
+    candidates = [Path(__file__).resolve().parents[2], Path("/repo"), Path.cwd()]
+    root = next((p for p in candidates if (p / "docker-compose.yml").exists()), None)
+    if root is None:
+        pytest.skip("repo root not reachable from here; this guard runs in CI")
+
+    pinned = re.search(
+        r"^playwright==(\d+\.\d+\.\d+)",
+        (root / "e2e" / "requirements.txt").read_text(encoding="utf-8"),
+        re.M,
+    )
+    assert pinned, "e2e/requirements.txt no longer pins playwright"
+
+    image = re.search(
+        r"mcr\.microsoft\.com/playwright/python:v(\d+\.\d+\.\d+)",
+        (root / "docker-compose.yml").read_text(encoding="utf-8"),
+    )
+    assert image, "docker-compose.yml no longer names a Playwright image"
+
+    assert pinned.group(1) == image.group(1), (
+        f"playwright=={pinned.group(1)} but the image is v{image.group(1)}. "
+        "The image carries the browser binaries for its own version, so both "
+        "have to move together or the browser tests break on startup."
+    )

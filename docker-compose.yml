@@ -118,6 +118,8 @@ services:
   #   ./hoard e2e
   e2e:
     profiles: ["e2e"]
+    # Version must equal the `playwright` pin in e2e/requirements.txt - the
+    # image carries the browser binaries for it. test_layering.py checks.
     image: mcr.microsoft.com/playwright/python:v1.49.1-noble
     working_dir: /e2e
     volumes:
