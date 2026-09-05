@@ -146,11 +146,29 @@ def file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+# How hard SQLite works to survive a power cut.
+#
+# FULL for a real household ledger: this is the only copy of their financial
+# history, and an import interrupted by a flat battery must not corrupt it.
+#
+# Tests override this to OFF, because a ledger created in a temp directory and
+# deleted seconds later gains nothing from durability - and pays a great deal
+# for it. Every fsync here is a physical write, so on a spinning disk creating
+# the empty schema cost about three seconds per test, which the autouse
+# fixture then paid 159 times over.
+SYNCHRONOUS = "FULL"
+
+
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Before journal_mode, not after: switching an existing database to WAL is
+    # itself a synchronised operation, so setting the level second means the
+    # switch still pays full price. Measured on this project's schema, the two
+    # orderings differ by roughly 450x.
+    conn.execute(f"PRAGMA synchronous={SYNCHRONOUS}")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     try:

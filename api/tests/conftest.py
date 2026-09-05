@@ -35,6 +35,11 @@ def isolated_ledger(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    # A throwaway ledger does not need to survive a power cut, and paying for
+    # durability here is not free: with SQLite's default synchronous=FULL,
+    # creating this empty schema took about three seconds, so this fixture
+    # alone accounted for most of the suite's runtime. Real ledgers keep FULL.
+    monkeypatch.setattr(db, "SYNCHRONOUS", "OFF")
     monkeypatch.setattr(db, "DB_PATH", data_dir / "ledger.db")
     monkeypatch.setattr(cache, "DATA_DIR", data_dir)
     monkeypatch.setattr(config, "DATA_DIR", data_dir)
