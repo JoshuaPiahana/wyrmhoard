@@ -137,9 +137,9 @@ def test_entitlements_page_always_explains_itself(dashboard: Page):
     lowered = text.lower()
     if "$" in text:
         # A figure is on screen, so the caveat framing it must be too.
-        assert "estimate" in lowered or "verified" in lowered, (
-            "An entitlement figure is shown without the caveat that it is an estimate"
-        )
+        assert (
+            "estimate" in lowered or "verified" in lowered
+        ), "An entitlement figure is shown without the caveat that it is an estimate"
     else:
         # No figure, so it must instead say what to add to get one.
         assert "nothing to estimate" in lowered or "add" in lowered
