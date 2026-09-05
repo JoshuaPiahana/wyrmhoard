@@ -265,6 +265,17 @@ clean machine to prove the instructions still work.
 
 ---
 
+## Where this is going
+
+The tool is useful with zero input and gets more useful with each detail you
+choose to add — bank CSV unlocks cash flow, household basics unlock goals, a
+payslip sharpens the entitlement maths, mortgage details unlock payoff
+scenarios. Nothing is ever required, and the plan is for the app to tell you
+what each next step is *worth* before you spend the effort.
+
+[ROADMAP.md](ROADMAP.md) has the detail, including the things this project
+deliberately will not do.
+
 ## Contributing
 
 Bank formats, merchant rules for your region, and entitlement modules for
