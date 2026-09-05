@@ -30,6 +30,36 @@ household:
   # Optional. Used only to point you at the right rates-rebate scheme.
   council: null
 
+  # -------------------------------------------------------------------------
+  # The three facts no bank export can settle. Each takes three answers, not
+  # two, and `null` - "I have not said" - is the shipped default on purpose.
+  #
+  # An empty `people` list below could mean "no children live here" or "I have
+  # not filled this in yet", and those need opposite behaviour. Told there are
+  # no children, the tool stops raising Working for Families entirely. Told
+  # nothing, it asks - because that credit is usually the largest sum this
+  # tool can find, and never mentioning it is a far more expensive mistake
+  # than mentioning it once too often.
+  #
+  # Fill these in and the nagging stops. Leave them and you get questions, not
+  # assumptions.
+  # -------------------------------------------------------------------------
+
+  # true | false | null. Listing a child under `people` below also answers it.
+  has_children: null
+
+  # true | false | null. Entitlements are assessed on combined household
+  # income, so a partner changes the arithmetic rather than just the wording.
+  has_partner: null
+
+  # owner_with_mortgage | owner_freehold | renting | other | null
+  #
+  # Left null this is inferred: a loan account in the ledger means a mortgage,
+  # several payments categorised as rent mean a tenancy. Set it only to
+  # correct a wrong guess - if the loan the tool found is a car loan rather
+  # than a home loan, say so here.
+  housing: null
+
 # ---------------------------------------------------------------------------
 # Who lives here. Nothing else can know this, and it drives the entitlement
 # checks - which are usually the largest number this tool can find.

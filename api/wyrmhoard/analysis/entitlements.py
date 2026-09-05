@@ -23,7 +23,7 @@ from typing import Any
 
 import pandas as pd
 
-from .. import cache, config
+from .. import cache, config, facts
 from .cashflow import complete_months, frame
 
 
@@ -178,8 +178,23 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
         )
 
     if n_children == 0:
+        # Two very different silences. A household that has told us there are
+        # no children should never be nagged about a credit for children; a
+        # household that has told us nothing should be asked, because Working
+        # for Families is usually the largest sum this tool can find and
+        # missing it costs far more than an unnecessary question.
+        known_childless = facts.has_children()["value"] is False
         result["available"] = False
-        result["reason"] = "No children configured in household.yml."
+        result["applicable"] = not known_childless
+        result["reason"] = (
+            "This household has no children, so Working for Families does not apply."
+            if known_childless
+            else (
+                "No children recorded yet. If there are children here, add them to "
+                "household.yml with their birth dates - some credits turn on an "
+                "exact age, and this is usually the largest entitlement available."
+            )
+        )
         return result
 
     if gross is None:

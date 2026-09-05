@@ -85,6 +85,17 @@ categories:
     group: commitment
     priority: 5
     match: ["LOAN PAYMENT", "HOME LOAN", "MORTGAGE", "TABLE LOAN", "re:\\bLN ?\\d"]
+  rent:
+    label: "Rent"
+    group: commitment
+    priority: 5
+    direction: out
+    # Word-bounded, because "RENT" as a plain substring matches PARENT, CURRENT
+    # and RENTAL CAR. The bare word is how most tenancy payments are labelled;
+    # the rest are the property managers and the tenancy bond service.
+    match: ['re:\bRENT\b', 're:\bRENTAL\s+PAY', "TENANCY", "TENANCY SERVICES",
+            "PROPERTY MANAGE", "PROPERTY MGMT", "QUINOVIC", "BARFOOT", "HARCOURTS RENT",
+            "RAY WHITE RENT", "LODGE RENT", "OXYGEN PROPERTY"]
   insurance:
     label: "Insurance"
     group: commitment

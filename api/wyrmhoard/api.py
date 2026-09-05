@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import __version__, accounts, cache, categorise, config, db
+from . import __version__, accounts, cache, categorise, config, db, facts
 from . import coach as coach_mod
 from .analysis import cashflow, entitlements, mortgage, recurring
 from .ingest import ingest_file, parse_csv
@@ -94,6 +94,16 @@ def setup_state() -> dict[str, Any]:
                 "id": "categorise",
                 "label": f"Categorisation is {cov['categorised_pct']}% - aim for 90%+",
                 "why": "Below 90% the category charts are decorative rather than useful.",
+            }
+        )
+    for unknown_fact in facts.unknown():
+        todo.append(
+            {
+                "id": f"fact_{unknown_fact['fact']}",
+                "label": unknown_fact["question"],
+                "why": "Nothing in a bank export can answer this, and the tool "
+                "would rather ask than assume. Answering it in household.yml "
+                "removes this permanently - including answering 'no'.",
             }
         )
     for gap in accounts.likely_missing_accounts()[:2]:
@@ -192,6 +202,10 @@ def household() -> dict[str, Any]:
         "goals": hh.goals,
         "currency": hh.currency,
         "configured": (config.CONFIG_DIR / "household.yml").exists(),
+        # Tri-state, each with the evidence behind it. An empty `people` list
+        # above cannot distinguish "no children" from "not filled in yet";
+        # these can, and the difference changes what the coach says.
+        "facts": facts.all_facts(),
     }
 
 

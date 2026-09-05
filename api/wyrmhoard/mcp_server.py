@@ -41,7 +41,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, accounts, categorise, config, db
+from . import __version__, accounts, categorise, config, db, facts
 from . import coach as coach_mod
 from .analysis import cashflow, entitlements, income, mortgage, recurring
 
@@ -175,11 +175,23 @@ def describe_data_gaps() -> dict[str, Any]:
             "derived from them is a rough signal only."
         )
 
+    # Facts about the people, which no export can supply. Listed as questions
+    # rather than gaps because an agent can simply ask them, and one answer
+    # here is often worth more than any amount of further analysis.
+    unknown_facts = facts.unknown()
+    for item in unknown_facts:
+        gaps.append(
+            f"Unknown: {item['question']} Until this is answered the tool "
+            "treats it as unestablished rather than assuming an answer."
+        )
+
     return {
         "has_gaps": bool(gaps),
         "gaps": gaps,
         "missing_accounts": missing,
         "coverage": coverage,
+        "household_facts": facts.all_facts(),
+        "questions_for_the_household": unknown_facts,
         "guidance": (
             "State these limitations when answering. Do not present a figure as "
             "settled if a gap above could change it."
