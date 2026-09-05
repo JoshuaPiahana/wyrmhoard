@@ -118,15 +118,31 @@ def test_the_group_bar_adds_up_to_the_full_width(dashboard: Page):
     assert 99.0 <= total <= 101.0, f"Group bar segments total {total}%"
 
 
-def test_entitlements_page_carries_its_caveat(dashboard: Page):
+def test_entitlements_page_always_explains_itself(dashboard: Page):
     """
-    The unverified-rates warning is a safety feature, not decoration. If the
-    rates are unverified the page must say so.
+    The page must never be blank, in either state.
+
+    With household details it shows an estimate, and the unverified-rates
+    caveat that stops that estimate being read as fact. Without them it must
+    say what is missing - originally it rendered an empty banner, which is how
+    a fresh install looked to anyone who had not filled in household.yml yet.
     """
     dashboard.click('nav.tabs button[data-tab="entitlements"]')
     banner = dashboard.locator("#ent-banner")
+
     expect(banner).to_be_visible()
-    assert "estimate" in banner.inner_text().lower() or "verified" in banner.inner_text().lower()
+    text = banner.inner_text().strip()
+    assert len(text) > 40, f"Entitlements banner is effectively empty: {text!r}"
+
+    lowered = text.lower()
+    if "$" in text:
+        # A figure is on screen, so the caveat framing it must be too.
+        assert "estimate" in lowered or "verified" in lowered, (
+            "An entitlement figure is shown without the caveat that it is an estimate"
+        )
+    else:
+        # No figure, so it must instead say what to add to get one.
+        assert "nothing to estimate" in lowered or "add" in lowered
 
 
 # ---------------------------------------------------------------------------

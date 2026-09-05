@@ -325,13 +325,29 @@ function renderBanners() {
 
   const e = state.entitlements?.estimate;
   const banner = $('#ent-banner');
-  if (banner && e?.headline) {
+  if (!banner) return;
+
+  if (e?.headline) {
     const tone = e.severity === 'high' ? 'bad' : (e.severity === 'medium' ? 'warn' : 'info');
     banner.innerHTML = `<div class="note ${tone}"><b>${esc(e.headline)}</b></div>` +
       (e.rates_verified ? '' :
         `<div class="note warn">The NZ rate constants in <code>config/nz_rates.yml</code>
          have not been verified for this tax year, so the estimate is a rough signal only.
          Verifying them takes about ten minutes and makes this page trustworthy.</div>`);
+  } else {
+    // The page must never be silently blank. Somebody who has not filled in
+    // their household yet should be told what to add and what it buys them,
+    // rather than being left looking at an empty tab wondering if it broke.
+    const reason = e?.reason
+      || 'Add your household details to see whether you are claiming everything you are entitled to.';
+    const next = e?.how_to_add
+      || 'Add each child (with a birth date) under <code>people:</code> in '
+         + '<code>config/household.yml</code>, then press "Reload config" on the Data tab. '
+         + 'Entitlements are usually the largest single number this tool can find, so it '
+         + 'is worth the two minutes.';
+    banner.innerHTML =
+      `<div class="note info"><b>Nothing to estimate yet.</b> ${esc(reason)}</div>` +
+      `<div class="note info">${next}</div>`;
   }
 }
 
