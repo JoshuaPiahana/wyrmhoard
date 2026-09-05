@@ -26,7 +26,24 @@ case "$cmd" in
   logs)     docker compose logs -f api ;;
   build)    docker compose build ;;
   test)     docker compose run --rm --no-deps api python -m pytest tests/ -q "$@" ;;
-  lint)     docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo api bash scripts/lint.sh ;;
+  lint)
+    # Both linters always run, even if the first fails - seeing every problem
+    # at once beats fixing Python, re-running, and only then learning the JS
+    # was broken too.
+    rc=0
+    docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo api bash scripts/lint.sh || rc=1
+    echo
+    echo "=== eslint (dashboard JS) ==="
+    if docker compose run --rm lint-js; then
+      echo "eslint passed."
+    else
+      rc=1
+    fi
+    if [ "$rc" -ne 0 ]; then
+      echo "Static checks FAILED." >&2
+    fi
+    exit "$rc"
+    ;;
   fmt)      docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo api sh -c "ruff check --fix . ; ruff format ." ;;
   e2e)      docker compose up -d web && docker compose run --rm e2e "$@" ;;
   check)    "$0" lint && "$0" test && "$0" e2e ;;

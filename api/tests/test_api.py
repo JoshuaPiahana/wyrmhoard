@@ -178,6 +178,48 @@ def test_manual_override_sticks_and_beats_the_rules(client):
     assert all(t["categorised_by"] == "manual" for t in tx)
 
 
+@pytest.mark.parametrize(
+    "hostile,expected",
+    [
+        # Only the final path component survives, so traversal segments are
+        # discarded outright rather than escaped.
+        ("../../../etc/passwd", "passwd"),
+        ("..\\..\\windows\\system32\\evil.csv", "evil.csv"),
+        ("/absolute/path.csv", "path.csv"),
+        ("....//....//x.csv", "x.csv"),
+        ("", "upload.csv"),
+        (None, "upload.csv"),
+        ("..", "upload.csv"),
+        # Ordinary names must come through unharmed - browsers produce these.
+        ("normal-export (1).csv", "normal-export (1).csv"),
+        ("Kiwibank 38-9014 export.csv", "Kiwibank 38-9014 export.csv"),
+        # Anything genuinely odd is neutralised rather than rejected.
+        ("we;ird|name$.csv", "we_ird_name_.csv"),
+    ],
+)
+def test_upload_filenames_cannot_escape_the_inbox(hostile, expected):
+    """
+    The browser supplies this name, so it is attacker-controlled in principle.
+    A traversal sequence must never survive into a path we join and write to.
+    """
+    from wyrmhoard.api import safe_upload_name
+
+    safe = safe_upload_name(hostile)
+    assert safe == expected
+    assert "/" not in safe and "\\" not in safe
+    assert not safe.startswith(".")
+
+
+def test_import_writes_only_inside_the_inbox(client, tmp_path):
+    """End to end: a traversal filename lands in the inbox, not above it."""
+    client.post(
+        "/import",
+        files={"file": ("../../escaped.csv", SAMPLE_CSV, "text/csv")},
+    )
+    assert not (tmp_path.parent / "escaped.csv").exists()
+    assert list((tmp_path / "inbox").glob("*.csv")), "nothing was written to the inbox"
+
+
 def test_unknown_category_is_rejected(client):
     res = client.post(
         "/categorise", json={"fingerprints": ["deadbeef"], "category": "not_a_category"}

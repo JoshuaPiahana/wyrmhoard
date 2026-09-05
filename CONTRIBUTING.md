@@ -29,7 +29,7 @@ Everything runs in containers. You do not need Python on your machine.
 ## The checks
 
 ```bash
-./hoard lint     # data guard, ruff, mypy
+./hoard lint     # data guard, ruff, mypy, yamllint, shellcheck, eslint
 ./hoard test     # unit and integration
 ./hoard e2e      # browser tests against the running stack
 ./hoard check    # all three, in the order CI runs them

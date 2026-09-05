@@ -259,10 +259,10 @@ drops straight in — no build step, no framework, no rewiring of the maths.
 ## Quality gates
 
 Every push runs: a financial-data and secret scan, `ruff`, `mypy`, `yamllint`,
-`shellcheck`, unit and integration tests on Python 3.11 and 3.12, a Docker
-build, twenty-eight browser tests (including automated accessibility and
-mobile-overflow checks), and a job that follows this README's quickstart on a
-clean machine to prove the instructions still work.
+`shellcheck`, `eslint`, unit and integration tests on Python 3.11 and 3.12, a
+Docker build, twenty-eight browser tests (including automated accessibility
+and mobile-overflow checks), and a job that follows this README's quickstart
+on a clean machine to prove the instructions still work.
 
 ```bash
 ./hoard check

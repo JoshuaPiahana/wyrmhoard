@@ -35,6 +35,19 @@ services:
       - api
     restart: unless-stopped
 
+  # JavaScript linting. Behind a profile, and Node exists only for this - the
+  # dashboard itself has no build step and no dependencies. Running it through
+  # a container rather than requiring Node on the host keeps the promise that
+  # `./hoard lint` and CI run exactly the same checks.
+  #   ./hoard lint
+  lint-js:
+    profiles: ["lint"]
+    image: node:22-alpine
+    working_dir: /web
+    volumes:
+      - ./web:/web
+    command: npx --yes eslint@9.17.0 src/js
+
   # Browser tests. Behind a profile so `docker compose up` never pulls the
   # 2GB Playwright image for someone who just wants to look at their money.
   #   ./hoard e2e

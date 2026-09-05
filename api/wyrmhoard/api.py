@@ -12,10 +12,11 @@ nothing here should ever be reachable from outside the machine.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -241,12 +242,42 @@ async def preview(file: UploadFile = File(...)) -> dict[str, Any]:
     return {"report": report.as_dict(), "sample_rows": rows[:10]}
 
 
+def safe_upload_name(raw_name: str | None) -> str:
+    """
+    Reduce an uploaded filename to something safe to join onto a directory.
+
+    The browser sends this, so it is attacker-controlled in principle: a name
+    like "../../../etc/cron.d/x" would otherwise escape the inbox entirely and
+    write wherever the process can reach.
+
+    The risk here is modest - the API is bound to loopback and used by one
+    household - but "it is only reachable locally" is exactly the reasoning
+    that ages badly the day somebody puts this behind a tunnel to show a
+    friend. Only the final path component is kept, separators and traversal
+    segments are dropped, and the result is verified to stay inside the inbox
+    by the caller.
+    """
+    name = PurePosixPath((raw_name or "").replace("\\", "/")).name
+    name = name.strip().lstrip(".")
+    # Parentheses are kept: browsers name repeat downloads "Export (1).csv"
+    # and the filename is shown back to the user in the import report, so
+    # mangling it for no security gain just makes the report confusing.
+    name = re.sub(r"[^A-Za-z0-9._ ()-]", "_", name)[:120].strip()
+    return name or "upload.csv"
+
+
 @app.post("/import")
 async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
     raw = await file.read()
-    inbox = config.DATA_DIR / "inbox"
+    inbox = (config.DATA_DIR / "inbox").resolve()
     inbox.mkdir(parents=True, exist_ok=True)
-    dest = inbox / (file.filename or "upload.csv")
+
+    dest = (inbox / safe_upload_name(file.filename)).resolve()
+    # Belt and braces: even with the name sanitised, confirm the final path
+    # really is inside the inbox before writing anything.
+    if not dest.is_relative_to(inbox):
+        raise HTTPException(400, "Invalid filename.")
+
     dest.write_bytes(raw)
 
     report = ingest_file(dest)
