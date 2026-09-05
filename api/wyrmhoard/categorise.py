@@ -305,9 +305,15 @@ _LEARNED_HEADER = """\
 #
 # Merged over config/rules.yml on every categorisation run, so a pattern here
 # takes effect without touching the public ruleset. Only `match` is read for a
-# category rules.yml already defines, which means nothing learned here can
-# change a category's group or label - and so nothing learned here can quietly
-# move spending between essential and discretionary.
+# category rules.yml already defines, so nothing here can change a category's
+# group or label.
+#
+# It can still change which category a transaction lands in, and that is worth
+# understanding before editing by hand. Rules are evaluated in priority order,
+# so a pattern under a lower-priority category wins transactions away from a
+# higher-priority one - teach "COUNTDOWN" to takeaways and your supermarket
+# shop stops being essential spending and starts being discretionary. Anything
+# taught through the app reports that when it happens; a hand edit does not.
 #
 # Safe to edit by hand: it is plain YAML, re-read on every run. Comments other
 # than this header do not survive the next taught rule, so keep notes of your
@@ -404,26 +410,63 @@ def learn(pattern: str, category: str) -> dict[str, Any]:
         )
     _check_pattern(pattern)
 
-    # Snapshotted before the write, so the count reported afterwards is what
-    # this rule actually claimed rather than everything in the category.
-    unknown_before = {tx["fingerprint"] for tx in db.all_transactions() if is_unknown(tx)}
+    # The whole ledger's categorisation, snapshotted before the write. Counting
+    # only previously-unknown transactions would report the pleasant half of
+    # what a rule does and stay silent about the rest: rules are evaluated in
+    # priority order, so a pattern taught to a lower-priority category takes
+    # transactions off a higher-priority one. Teaching "COUNTDOWN NEWTOWN" to
+    # takeaways (priority 15) moves it out of groceries (priority 20), and
+    # groceries is essential while takeaways is discretionary - which changes
+    # the essentials total, and with it the weeks-of-runway figure on the
+    # overview. Silently. So both halves are reported.
+    before = {tx["fingerprint"]: (tx["category"], tx["grp"]) for tx in db.all_transactions()}
     added = _append_pattern(category, pattern)
 
     # recategorise_all() reloads config first, so the pattern just written is
     # compiled before anything is matched against it.
     cover = recategorise_all()
 
-    matched = sum(
-        1
-        for tx in db.all_transactions()
-        if tx["fingerprint"] in unknown_before and tx["category"] == category
-    )
+    matched = 0
+    reclassified: list[dict[str, Any]] = []
+    for tx in db.all_transactions():
+        was_category, was_group = before.get(tx["fingerprint"], (None, None))
+        if tx["category"] != category or tx["category"] == was_category:
+            continue
+        if was_category in (None, "uncategorised") or was_group == "unknown":
+            matched += 1
+            continue
+        reclassified.append(
+            {
+                "memo": strip_noise(tx["memo"])[:40],
+                "amount": round(float(tx["amount"]), 2),
+                "from_category": was_category,
+                "from_group": was_group,
+                "to_group": tx["grp"],
+            }
+        )
+
+    # Moving spending across this line is the change worth surfacing loudest:
+    # essentials drive the runway calculation, so a reclassification here is a
+    # different headline number, not a tidier chart.
+    changed_group = [r for r in reclassified if r["from_group"] != r["to_group"]]
+
     return {
         "pattern": pattern,
         "category": category,
         "label": labels[category],
         "already_known": not added,
         "matched": matched,
+        "reclassified": reclassified,
+        "reclassified_count": len(reclassified),
+        "changed_group_count": len(changed_group),
+        "warning": (
+            f"This rule also moved {len(changed_group)} transaction(s) that were "
+            "already categorised into a different spending group, which changes "
+            "the essentials total and the runway figure derived from it. Remove "
+            f"the pattern from {learned_path().name} if that was not intended."
+            if changed_group
+            else None
+        ),
         "path": str(learned_path()),
         "coverage": cover,
     }

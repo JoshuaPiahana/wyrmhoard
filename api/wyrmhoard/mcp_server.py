@@ -408,6 +408,14 @@ def teach_category(match: str, category: str) -> dict[str, Any]:
     transactions the new rule actually claimed. Zero means the pattern is
     wrong, not that the work is done.
 
+    Check `warning` before reporting success. Rules are evaluated in priority
+    order, so a pattern can also take transactions off a category that already
+    had them - and if the two categories sit in different spending groups, the
+    household's essentials total and their weeks-of-runway change as a result.
+    `reclassified` lists exactly what moved. Say so when it happens; a rule
+    that quietly reclassifies a supermarket shop as discretionary is worse
+    than one that matches nothing.
+
     Args:
         match: a distinctive fragment of the merchant name, or "re:<regex>".
         category: the category key to file it under.
@@ -438,6 +446,12 @@ def teach_category(match: str, category: str) -> dict[str, Any]:
             f"{result['label']}, and future ones will be too."
         )
 
+    # Appended rather than replacing the note, because it applies whichever of
+    # the three cases above produced it - including "matched nothing", where a
+    # rule that claimed no new spending can still have moved some.
+    if result["warning"]:
+        note = f"{note} {result['warning']}"
+
     return {
         "ok": True,
         "learned": {
@@ -446,6 +460,9 @@ def teach_category(match: str, category: str) -> dict[str, Any]:
             "label": result["label"],
         },
         "matched": result["matched"],
+        "reclassified": result["reclassified"],
+        "changed_group_count": result["changed_group_count"],
+        "warning": result["warning"],
         "already_known": result["already_known"],
         "written_to": result["path"],
         "coverage": result["coverage"],

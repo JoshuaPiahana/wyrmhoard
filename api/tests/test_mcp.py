@@ -376,3 +376,41 @@ def test_teaching_reports_how_many_transactions_it_caught(private_config):
     # And the caller can see the effect without a second round trip.
     remaining = [g["merchant"] for g in mcp_server.get_uncategorised()["groups"]]
     assert remaining == ["ARROWFIELD LTD"]
+
+    # Nothing was taken off another category, so there is nothing to warn about.
+    assert result["reclassified"] == []
+    assert result["warning"] is None
+
+
+def test_teaching_reports_spending_it_moves_out_of_another_category(private_config):
+    """
+    The quiet failure: a rule that takes transactions a rule already had.
+
+    Categories are evaluated in priority order, so teaching a supermarket to
+    takeaways (priority 15) beats groceries (priority 20) and the shop stops
+    counting as essential spending. Essentials drive the weeks-of-runway
+    figure on the overview, so this changes a headline number - and counting
+    only previously-uncategorised matches reported it as doing nothing at all.
+    """
+    load_unknown_spending("COUNTDOWN NEWTOWN", rows=4, amount=-180.00)
+
+    before = [tx for tx in db.all_transactions() if tx["memo"] == "COUNTDOWN NEWTOWN"]
+    assert before, "the fixture memo must exist for this test to mean anything"
+    assert {tx["grp"] for tx in before} == {"essential"}, "should start as groceries"
+
+    result = mcp_server.teach_category(match="COUNTDOWN NEWTOWN", category="takeaways")
+
+    assert result["ok"] is True
+    assert result["matched"] == 0, "none of these were uncategorised"
+    assert result["changed_group_count"] == 4
+    assert result["warning"] is not None
+    assert "runway" in result["warning"]
+    assert "essentials total" in result["note"]
+
+    moved = result["reclassified"][0]
+    assert moved["from_category"] == "groceries"
+    assert moved["from_group"] == "essential"
+    assert moved["to_group"] == "discretionary"
+
+    after = [tx for tx in db.all_transactions() if tx["memo"] == "COUNTDOWN NEWTOWN"]
+    assert {tx["grp"] for tx in after} == {"discretionary"}
