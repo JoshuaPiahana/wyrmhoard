@@ -131,6 +131,52 @@ CREATE TABLE IF NOT EXISTS manual_balances (
     note       TEXT,
     UNIQUE(as_at, label)
 );
+
+-- Things the household owns that no bank export can reveal. The entity only;
+-- what it is worth lives in property_valuations, because a worth is a claim
+-- somebody made on a date and not a property of the house.
+CREATE TABLE IF NOT EXISTS properties (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    label      TEXT NOT NULL UNIQUE,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    decided_at TEXT NOT NULL
+);
+
+-- A history, not a current value.
+--
+-- Each row is one producer's claim at one point in time. Nothing is ever
+-- overwritten: a figure that replaced its predecessor silently is how
+-- `manual_balances` loses the fact that it changed, and how a valuation that
+-- somebody half-remembered from three years ago comes to look current.
+--
+-- The six provenance columns are the producer contract. Any future table that
+-- accepts data from outside copies this set. See docs/PRODUCERS.md.
+CREATE TABLE IF NOT EXISTS property_valuations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+    value       REAL NOT NULL,
+    observed_at TEXT NOT NULL,             -- when the figure was TRUE
+    received_at TEXT NOT NULL,             -- when Wyrmhoard stored it
+    producer    TEXT NOT NULL,             -- human:… | agent:… | tool:…
+    method      TEXT NOT NULL,             -- how it was arrived at
+    source      TEXT,                      -- a filename, a URL, "typed by hand"
+    confidence  TEXT,                      -- the producer's own claim
+    note        TEXT,
+    fingerprint TEXT NOT NULL UNIQUE       -- so a producer run twice inserts once
+);
+
+CREATE INDEX IF NOT EXISTS idx_valuations_property ON property_valuations(property_id);
+
+-- Which loans are secured on which property. Data, not analysis: nothing
+-- computes a loan-to-value ratio from it yet. It is recorded now because the
+-- link is a fact somebody knows today and would have to reconstruct later,
+-- and because without it a car loan would eventually be counted against a house.
+CREATE TABLE IF NOT EXISTS property_loans (
+    property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+    account     TEXT NOT NULL,
+    decided_at  TEXT NOT NULL,
+    PRIMARY KEY (property_id, account)
+);
 """
 
 
@@ -202,6 +248,12 @@ _ADDED_COLUMNS = {
     "transactions": {
         "match_text": "TEXT",
         "counterparty": "TEXT",
+    },
+    # What submitted this document. NULL for everything imported before the
+    # producer contract existed, which is honest: those imports genuinely do
+    # not know, and inventing a value for them would be worse than a blank.
+    "import_log": {
+        "producer": "TEXT",
     },
     "payslips": {
         "period": "TEXT",
@@ -495,12 +547,26 @@ def account_roles() -> dict[str, dict[str, Any]]:
     return {r["account"]: dict(r) for r in rows}
 
 
-def log_import(sha: str, filename: str, rows_seen: int, rows_new: int, parser: str) -> None:
+def log_import(
+    sha: str,
+    filename: str,
+    rows_seen: int,
+    rows_new: int,
+    parser: str,
+    producer: str | None = None,
+) -> None:
+    """
+    Record that a document was taken in, and what submitted it.
+
+    `parser` is what read the file; `producer` is who handed it over. They are
+    different questions and the second one had no answer at all until the
+    producer contract existed.
+    """
     with connect() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO import_log
-               (file_sha256, filename, rows_seen, rows_new, imported_at, parser)
-               VALUES (?,?,?,?,?,?)""",
+               (file_sha256, filename, rows_seen, rows_new, imported_at, parser, producer)
+               VALUES (?,?,?,?,?,?,?)""",
             (
                 sha,
                 filename,
@@ -508,6 +574,7 @@ def log_import(sha: str, filename: str, rows_seen: int, rows_new: int, parser: s
                 rows_new,
                 datetime.now().isoformat(timespec="seconds"),
                 parser,
+                producer,
             ),
         )
 
@@ -575,6 +642,135 @@ def manual_balances() -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute("SELECT * FROM manual_balances ORDER BY as_at, label").fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Properties and their valuations
+#
+# Storage only. Every rule about what a valid valuation looks like lives in
+# properties.py, the same split as facts.answer() and db.set_household_fact():
+# this layer writes what it is given, so a caller cannot get a different answer
+# by going around the validation.
+# ---------------------------------------------------------------------------
+def set_property(label: str, is_primary: bool = False, property_id: int | None = None) -> int:
+    """Create or rename a property. Returns its id."""
+    now = datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        if property_id is None:
+            row = conn.execute("SELECT id FROM properties WHERE label = ?", (label,)).fetchone()
+            property_id = row["id"] if row else None
+
+        if property_id is None:
+            cur = conn.execute(
+                "INSERT INTO properties (label, is_primary, decided_at) VALUES (?,?,?)",
+                (label, 1 if is_primary else 0, now),
+            )
+            property_id = int(cur.lastrowid or 0)
+        else:
+            conn.execute(
+                "UPDATE properties SET label = ?, decided_at = ? WHERE id = ?",
+                (label, now, property_id),
+            )
+            if is_primary:
+                conn.execute("UPDATE properties SET is_primary = 0")
+                conn.execute("UPDATE properties SET is_primary = 1 WHERE id = ?", (property_id,))
+
+        # Exactly one primary, enforced here rather than by a partial index:
+        # an index turns this into a constraint violation whose message says
+        # nothing a caller could act on.
+        if is_primary:
+            conn.execute("UPDATE properties SET is_primary = 0 WHERE id != ?", (property_id,))
+        elif not conn.execute("SELECT 1 FROM properties WHERE is_primary = 1").fetchone():
+            # The first property recorded is the primary one until told otherwise.
+            conn.execute("UPDATE properties SET is_primary = 1 WHERE id = ?", (property_id,))
+
+    return int(property_id)
+
+
+def properties() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM properties ORDER BY is_primary DESC, label").fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_property(property_id: int) -> int:
+    """Remove a property. Valuations and loan links cascade."""
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM properties WHERE id = ?", (property_id,))
+        return cur.rowcount
+
+
+def add_valuation(valuation: dict[str, Any]) -> int:
+    """
+    Append one claim about what a property is worth.
+
+    INSERT OR IGNORE on the fingerprint, so a producer that runs twice on the
+    same day adds one row rather than two. Returns the number of rows added,
+    which lets a caller tell "recorded" from "already had that".
+    """
+    with connect() as conn:
+        before = conn.execute("SELECT COUNT(*) FROM property_valuations").fetchone()[0]
+        conn.execute(
+            """INSERT OR IGNORE INTO property_valuations
+               (property_id, value, observed_at, received_at, producer,
+                method, source, confidence, note, fingerprint)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                valuation["property_id"],
+                valuation["value"],
+                valuation["observed_at"],
+                datetime.now().isoformat(timespec="seconds"),
+                valuation["producer"],
+                valuation["method"],
+                valuation.get("source"),
+                valuation.get("confidence"),
+                valuation.get("note"),
+                valuation["fingerprint"],
+            ),
+        )
+        after = conn.execute("SELECT COUNT(*) FROM property_valuations").fetchone()[0]
+    return after - before
+
+
+def valuations(property_id: int | None = None) -> list[dict[str, Any]]:
+    """
+    Every claim, newest first by when it was TRUE rather than when it arrived.
+
+    A producer submitting an old council valuation today must not displace a
+    fresh appraisal recorded last week.
+    """
+    sql = "SELECT * FROM property_valuations"
+    params: tuple[Any, ...] = ()
+    if property_id is not None:
+        sql += " WHERE property_id = ?"
+        params = (property_id,)
+    sql += " ORDER BY observed_at DESC, received_at DESC"
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+def set_property_loan(property_id: int, account: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO property_loans (property_id, account, decided_at)
+               VALUES (?,?,?)""",
+            (property_id, account, datetime.now().isoformat(timespec="seconds")),
+        )
+
+
+def clear_property_loan(property_id: int, account: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "DELETE FROM property_loans WHERE property_id = ? AND account = ?",
+            (property_id, account),
+        )
+
+
+def property_loans() -> dict[str, int]:
+    """Account number to property id."""
+    with connect() as conn:
+        rows = conn.execute("SELECT account, property_id FROM property_loans").fetchall()
+    return {r["account"]: r["property_id"] for r in rows}
 
 
 def stats() -> dict[str, Any]:
