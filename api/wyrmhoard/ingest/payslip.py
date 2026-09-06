@@ -305,3 +305,60 @@ def parse_pdf(path: Path) -> PayslipReport:
         for page in pdf.pages:
             chunks.append(page.extract_text() or "")
     return parse_text("\n".join(chunks), filename=path.name)
+
+
+def ingest_file(path: Path, producer: str | None = None) -> dict[str, Any]:
+    """
+    Parse a payslip and store it. The counterpart to bank_csv.ingest_file.
+
+    This did not exist, so both callers - the HTTP upload and the MCP tool -
+    built the same persistence dict independently and drifted: each set
+    `employer` to the employee's personnel number, and neither wrote an
+    import_log row, so a payslip left no record of having arrived at all.
+    Having one of these means the mapping is stated once.
+
+    A payslip whose arithmetic does not balance is deliberately not stored.
+    Gross plus deductions must equal net; when it does not, something was
+    misread, and a wrong salary would quietly distort every entitlement figure
+    downstream. The report still comes back saying so.
+    """
+    from .. import db
+
+    report = parse_pdf(path)
+    stored = 0
+    if report.confidence != "low" and report.pay_date:
+        stored = db.save_payslip(
+            {
+                # The payslip states an employee reference, not an employer
+                # name. Recording it as the employer is wrong but is what the
+                # UNIQUE constraint has always keyed on, so changing it now
+                # would orphan existing rows. Left as-is deliberately; noted
+                # here so the next reader does not think it went unnoticed.
+                "employer": report.employee_ref,
+                "source_file": path.name,
+                "pay_date": report.pay_date,
+                "period": report.period,
+                "employee_ref": report.employee_ref,
+                "tax_code": report.tax_code,
+                "confidence": report.confidence,
+                **report.values,
+            }
+        )
+
+    # Logged whether or not it was stored: "we saw this file and rejected it"
+    # is exactly the thing somebody re-uploading the same payslip needs to know.
+    db.log_import(
+        db.file_sha256(path),
+        path.name,
+        rows_seen=1,
+        rows_new=1 if stored else 0,
+        parser="payslip",
+        producer=producer,
+    )
+
+    return {
+        "kind": "payslip",
+        "report": report.as_dict(),
+        "stored": stored,
+        "accepted": bool(stored),
+    }

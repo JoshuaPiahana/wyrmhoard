@@ -56,34 +56,40 @@ def ingest(
     """Import bank CSV exports. Safe to re-run; duplicates are ignored."""
     config.ensure_dirs()
     db.init()
-    from .ingest import ingest_file, ingest_inbox
+    from .ingest import ingest_document, ingest_inbox
 
     if sample:
         target = config.DATA_DIR / "samples" / "kiwibank_sample.csv"
         if not target.exists():
             samples.write(target)
-        reports = [ingest_file(target, default_account="Everyday")]
+        results = [ingest_document(target, producer="human:cli", default_account="Everyday")]
     elif path:
-        reports = [ingest_file(Path(path))]
+        results = [ingest_document(Path(path), producer="human:cli")]
     else:
-        reports = ingest_inbox(config.DATA_DIR / "inbox")
+        results = ingest_inbox(config.DATA_DIR / "inbox", producer="human:cli")
 
-    if not reports:
-        console.print("[yellow]No CSV files found in data/inbox/[/yellow]")
+    if not results:
+        console.print("[yellow]No CSV or PDF files found in data/inbox/[/yellow]")
         raise typer.Exit(0)
 
-    for r in reports:
-        colour = {"high": "green", "medium": "yellow", "low": "red"}.get(r.confidence, "white")
+    for result in results:
+        r = result["report"]
+        colour = {"high": "green", "medium": "yellow", "low": "red"}.get(r["confidence"], "white")
         console.print(
-            f"\n[bold]{r.filename}[/bold]  "
-            f"parsed [bold]{r.rows_parsed}[/bold]/{r.rows_seen} rows  "
-            f"confidence [{colour}]{r.confidence}[/{colour}]"
+            f"\n[bold]{r['filename']}[/bold]  " f"confidence [{colour}]{r['confidence']}[/{colour}]"
         )
-        console.print(
-            f"  dates {r.date_range[0]} to {r.date_range[1]}   "
-            f"columns {r.column_map}   header={r.had_header}"
-        )
-        for w in r.warnings:
+        if result["kind"] == "transactions":
+            console.print(
+                f"  parsed [bold]{r['rows_parsed']}[/bold]/{r['rows_seen']} rows   "
+                f"dates {r['date_range'][0]} to {r['date_range'][1]}   "
+                f"columns {r['column_map']}   header={r['had_header']}"
+            )
+        else:
+            console.print(
+                f"  payslip {r['pay_date'] or 'date unknown'}   "
+                f"{'stored' if result['accepted'] else 'NOT stored - it did not balance'}"
+            )
+        for w in r["warnings"]:
             console.print(f"  [yellow]! {w}[/yellow]")
 
     result = categorise.recategorise_all()

@@ -43,12 +43,11 @@ transport off the network entirely:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, accounts, categorise, config, db, facts
+from . import __version__, accounts, categorise, config, db, facts, properties
 from . import coach as coach_mod
 from .analysis import cashflow, entitlements, income, mortgage, recurring
 
@@ -529,6 +528,88 @@ def answer_household_fact(fact: str, value: bool | str | None = None) -> dict[st
 
 
 @server.tool()
+def get_property() -> dict[str, Any]:
+    """
+    What the household owns, and who says it is worth that.
+
+    Unlike every other figure this tool reports, a property value was typed in
+    rather than derived. Each one carries its basis - a council rating value, an
+    agent's appraisal, the purchase price, or somebody's guess - and the date it
+    was true. Say both out loud when quoting a value. "Their home is worth
+    $600,000" and "their 2023 council rating value was $600,000" are different
+    claims, and only the second one is true.
+
+    Valuations are a history. Several can coexist and disagree; the newest by
+    observation date is the current one, but the others are not wrong, just
+    older.
+
+    Nothing computes equity or a loan-to-value ratio from this yet.
+    """
+    return {**properties.summary(), "provenance": _provenance()}
+
+
+@server.tool()
+def record_property_value(
+    label: str,
+    value: float,
+    method: str,
+    observed_at: str,
+    source: str | None = None,
+    confidence: str | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """
+    Record what a property is worth. This writes to disk.
+
+    This tool CANNOT look a value up. Wyrmhoard makes no outbound network
+    requests at all - that promise is why a household is willing to point it at
+    their bank statements. If the user does not know what their home is worth,
+    ask them to check their council's rating value or a recent appraisal. Do
+    not search the web and record the result as though this tool found it.
+
+        method       appraisal | council_rv | purchase_price | estimate
+        observed_at  the date the figure was TRUE, not today
+        confidence   high | medium | low, as YOU judge the figure
+
+    Record what the user actually has. A number they half-remember is an
+    `estimate`, not an `appraisal`, and every figure later derived from it
+    inherits that difference. Do not upgrade a guess to make it look better.
+
+    `observed_at` is required and is not defaulted, because dating an old
+    figure as today silently turns a stale number into a current valuation.
+    If the user does not know when it was true, ask.
+
+    Args:
+        label: which property - "Home", or a name for a second one.
+        value: what it is worth, in the household's currency.
+        method: how that figure was arrived at.
+        observed_at: ISO date the figure was true.
+        source: where it came from - a rates notice, an agent's letter.
+        confidence: how much weight to put on it.
+        note: anything a person should know when reading it later.
+    """
+    try:
+        result = properties.record_valuation(
+            label=label,
+            value=value,
+            method=method,
+            observed_at=observed_at,
+            producer="agent:mcp",
+            source=source,
+            confidence=confidence,
+            note=note,
+        )
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "valid_methods": list(properties.METHODS),
+            "valid_confidences": list(properties.CONFIDENCES),
+        }
+    return result
+
+
+@server.tool()
 def take_snapshot(note: str | None = None) -> dict[str, Any]:
     """
     Freeze this month's figures so future progress can be measured against
@@ -572,47 +653,31 @@ def import_document(path: str) -> dict[str, Any]:
     than recorded - because a misread salary would quietly distort everything
     else. If confidence is low, say so instead of reporting the import as done.
 
+    The file must be inside the household's data directory. This tool used to
+    accept any path the container could reach, which on a tool an agent drives
+    is the wrong default: a path can arrive from an email or a web page as
+    easily as from the person asking.
+
     Args:
-        path: absolute path to a .csv or .pdf file on this machine.
+        path: path to a .csv or .pdf inside the data directory.
     """
-    source = Path(path)
-    if not source.exists():
-        return {"ok": False, "error": f"No file at {path}"}
+    from .ingest import ingest_document, resolve_within
 
-    if source.suffix.lower() == ".pdf":
-        from .ingest.payslip import parse_pdf
+    try:
+        source = resolve_within(config.DATA_DIR, path)
+        result = ingest_document(source, producer="agent:mcp")
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
 
-        payslip = parse_pdf(source)
-        stored = 0
-        if payslip.confidence != "low" and payslip.pay_date:
-            stored = db.save_payslip(
-                {
-                    "employer": payslip.employee_ref,
-                    "source_file": source.name,
-                    "pay_date": payslip.pay_date,
-                    "period": payslip.period,
-                    "employee_ref": payslip.employee_ref,
-                    "tax_code": payslip.tax_code,
-                    "confidence": payslip.confidence,
-                    **payslip.values,
-                }
-            )
-        return {
-            "ok": bool(stored),
-            "kind": "payslip",
-            "accepted": bool(stored),
-            "report": payslip.as_dict(),
-        }
+    if result["kind"] == "payslip":
+        return {"ok": bool(result["accepted"]), **result}
 
-    from .ingest import ingest_file
-
-    parsed = ingest_file(source)
-    coverage = categorise.recategorise_all()
+    report = result["report"]
     return {
-        "ok": parsed.confidence != "low",
+        "ok": report["confidence"] != "low",
         "kind": "bank_export",
-        "report": parsed.as_dict(),
-        "coverage": coverage,
+        "report": report,
+        "coverage": categorise.recategorise_all(),
     }
 
 

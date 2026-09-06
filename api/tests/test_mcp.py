@@ -261,33 +261,102 @@ def test_entitlements_always_carry_their_warning():
 # ---------------------------------------------------------------------------
 # Input
 # ---------------------------------------------------------------------------
-def test_importing_a_missing_file_fails_cleanly(tmp_path):
-    result = mcp_server.import_document(str(tmp_path / "nope.csv"))
+def inbox_file(name: str, body: str) -> str:
+    """
+    Write a document where an agent is allowed to read one.
+
+    import_document only reads inside the data directory now. It used to accept
+    any path the container could reach, which on a tool an agent drives is the
+    wrong default - a path arrives from an email or a web page as easily as
+    from the person asking.
+    """
+    from wyrmhoard import config
+
+    inbox = config.DATA_DIR / "inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    path = inbox / name
+    path.write_text(body, encoding="utf-8")
+    return str(path)
+
+
+def test_importing_a_missing_file_fails_cleanly():
+    from wyrmhoard import config
+
+    result = mcp_server.import_document(str(config.DATA_DIR / "inbox" / "nope.csv"))
     assert result["ok"] is False
     assert "No file at" in result["error"]
 
 
-def test_importing_a_bank_export_reports_its_confidence(tmp_path):
-    csv = tmp_path / "bank.csv"
-    csv.write_text(
+def test_a_path_outside_the_data_directory_is_refused(tmp_path):
+    """
+    The containment check, on the surface most exposed to a path somebody else
+    chose. Before this, the whole check was "does the file exist".
+    """
+    outside = tmp_path / "etc" / "passwd"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_text("root:x:0:0\n", encoding="utf-8")
+
+    result = mcp_server.import_document(str(outside))
+
+    assert result["ok"] is False
+    assert "outside" in result["error"]
+
+
+@pytest.mark.parametrize(
+    "hostile", ["../../../etc/passwd", "..\\..\\windows\\win.ini", "/etc/hosts"]
+)
+def test_traversal_out_of_the_data_directory_is_refused(hostile):
+    result = mcp_server.import_document(hostile)
+    assert result["ok"] is False
+    assert "outside" in result["error"] or "No file at" in result["error"]
+
+
+def test_a_file_type_the_tool_does_not_read_is_refused_rather_than_guessed_at():
+    """
+    "Not a PDF" used to mean "is a CSV", so anything else was fed to the CSV
+    parser and failed confusingly instead of being turned away.
+    """
+    path = inbox_file("secrets.yml", "password: hunter2\n")
+    result = mcp_server.import_document(path)
+
+    assert result["ok"] is False
+    assert ".csv" in result["error"] and ".pdf" in result["error"]
+
+
+def test_importing_a_bank_export_reports_its_confidence():
+    path = inbox_file(
+        "bank.csv",
         "Account number,Date,Memo,Amount,Balance\n"
         f"{ACCOUNT},01-01-2025,COUNTDOWN,-45.00,900.00\n"
         f"{ACCOUNT},02-01-2025,MERCURY,-80.00,820.00\n",
-        encoding="utf-8",
     )
-    result = mcp_server.import_document(str(csv))
+    result = mcp_server.import_document(path)
 
     assert result["kind"] == "bank_export"
     assert result["report"]["confidence"] in {"high", "medium", "low"}
 
 
-def test_an_unreadable_file_is_reported_not_swallowed(tmp_path):
-    junk = tmp_path / "junk.csv"
-    junk.write_text("hello,world\nfoo,bar\n", encoding="utf-8")
+def test_an_unreadable_file_is_reported_not_swallowed():
+    path = inbox_file("junk.csv", "hello,world\nfoo,bar\n")
 
-    result = mcp_server.import_document(str(junk))
+    result = mcp_server.import_document(path)
     assert result["ok"] is False
     assert result["report"]["confidence"] == "low"
+
+
+def test_an_import_records_which_agent_submitted_it():
+    """The point of the producer contract: nothing arrives anonymously."""
+    from wyrmhoard import db
+
+    path = inbox_file(
+        "traceable.csv",
+        "Account number,Date,Memo,Amount,Balance\n"
+        f"{ACCOUNT},03-01-2025,PAK N SAVE,-60.00,760.00\n",
+    )
+    mcp_server.import_document(path)
+
+    logged = [row for row in db.imports() if row["filename"] == "traceable.csv"]
+    assert logged and logged[0]["producer"] == "agent:mcp"
 
 
 # ---------------------------------------------------------------------------

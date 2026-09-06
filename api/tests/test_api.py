@@ -102,6 +102,7 @@ def test_health(client):
         "/rules",
         "/snapshots",
         "/balances",
+        "/properties",
     ],
 )
 def test_every_get_endpoint_responds_on_an_empty_ledger(client, path):
@@ -366,3 +367,103 @@ def test_learning_reports_spending_it_moves_out_of_another_category(client, priv
     moved = result["reclassified"][0]
     assert moved["from_group"] == "essential"
     assert moved["to_group"] == "discretionary"
+
+
+# ---------------------------------------------------------------------------
+# Properties: the producer-facing surface
+#
+# The point is not that a house value can be stored. It is that a stored value
+# can always answer "who says so, on what basis, as at when" - because this is
+# the first figure in the system with no ledger behind it.
+# ---------------------------------------------------------------------------
+VALUATION = {
+    "label": "Home",
+    "value": 600000,
+    "method": "council_rv",
+    "observed_at": "2026-03-01",
+    "producer": "tool:rates-lookup",
+    "source": "PNCC rating value",
+    "confidence": "medium",
+}
+
+
+def test_a_producer_can_submit_a_valuation_over_http(client, private_config):
+    res = client.post("/properties/valuations", json=VALUATION)
+    assert res.status_code == 200
+
+    body = client.get("/properties").json()
+    assert body["count"] == 1
+    stored = body["properties"][0]["valuation"]
+    assert stored["value"] == 600000
+    assert stored["producer"] == "tool:rates-lookup"
+    assert stored["method"] == "council_rv"
+    assert stored["observed_at"] == "2026-03-01"
+    assert stored["received_at"], "when it arrived is a different question to when it was true"
+
+
+def test_the_same_submission_twice_does_not_duplicate(client, private_config):
+    client.post("/properties/valuations", json=VALUATION)
+    second = client.post("/properties/valuations", json=VALUATION).json()
+
+    assert second["recorded"] is False
+    assert second["history_count"] == 1
+
+
+def test_a_changed_value_is_appended_not_substituted(client, private_config):
+    client.post("/properties/valuations", json=VALUATION)
+    client.post(
+        "/properties/valuations",
+        json={**VALUATION, "value": 655000, "observed_at": "2026-06-01", "method": "appraisal"},
+    )
+
+    body = client.get("/properties").json()
+    assert body["properties"][0]["valuation_count"] == 2
+    assert body["properties"][0]["valuation"]["value"] == 655000
+
+
+@pytest.mark.parametrize(
+    "bad,expect",
+    [
+        ({"producer": "somebody"}, "producer"),
+        ({"method": "zillow"}, "council_rv"),
+        ({"observed_at": "2099-01-01"}, "future"),
+        ({"value": -5}, "positive"),
+    ],
+)
+def test_a_refusal_says_what_was_wrong_not_just_400(client, private_config, bad, expect):
+    """The dashboard shows this text to whoever typed it."""
+    res = client.post("/properties/valuations", json={**VALUATION, **bad})
+
+    assert res.status_code == 400
+    assert expect in res.json()["detail"]
+    assert client.get("/properties").json()["count"] == 0, "a refusal must store nothing"
+
+
+def test_setup_asks_an_owner_to_record_their_home(client, private_config):
+    client.post("/household/facts", json={"fact": "housing", "value": "owner_with_mortgage"})
+
+    todo = client.get("/setup").json()["todo"]
+    assert any(t["id"] == "property" for t in todo)
+
+    client.post("/properties/valuations", json=VALUATION)
+
+    todo = client.get("/setup").json()["todo"]
+    assert not any(t["id"] == "property" for t in todo), "answering it must clear the prompt"
+
+
+def test_deleting_a_property_removes_it(client, private_config):
+    prop_id = client.post("/properties/valuations", json=VALUATION).json()["property_id"]
+
+    res = client.delete(f"/properties/{prop_id}")
+
+    assert res.status_code == 200
+    assert client.get("/properties").json()["count"] == 0
+    assert client.delete(f"/properties/{prop_id}").status_code == 404
+
+
+def test_an_upload_records_which_interface_submitted_it(client):
+    """Every document now leaves a trace of where it came from."""
+    _import_sample(client)
+
+    logged = client.get("/imports").json()
+    assert logged and logged[0]["producer"] == "human:dashboard"

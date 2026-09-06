@@ -465,8 +465,18 @@ def parse_csv(
     return out, report
 
 
-def ingest_file(path: Path, default_account: str | None = None) -> ParseReport:
-    """Parse and store one CSV. Re-importing the same file is a no-op."""
+def ingest_file(
+    path: Path,
+    default_account: str | None = None,
+    producer: str | None = None,
+) -> ParseReport:
+    """
+    Parse and store one CSV. Re-importing the same file is a no-op.
+
+    `producer` records what submitted it. Optional here because the CLI has
+    always called this directly; `ingest_document` supplies it for everything
+    coming from outside.
+    """
     sha = db.file_sha256(path)
     prior = db.already_imported(sha)
 
@@ -481,14 +491,5 @@ def ingest_file(path: Path, default_account: str | None = None) -> ParseReport:
         )
 
     new = db.insert_transactions(rows, source_file=path.name) if rows else 0
-    db.log_import(sha, path.name, report.rows_seen, new, report.parser)
-    report.rows_parsed = report.rows_parsed
+    db.log_import(sha, path.name, report.rows_seen, new, report.parser, producer=producer)
     return report
-
-
-def ingest_inbox(inbox: Path) -> list[ParseReport]:
-    """Import every CSV sitting in data/inbox/. The monthly routine."""
-    reports = []
-    for path in sorted(inbox.glob("*.csv")):
-        reports.append(ingest_file(path))
-    return reports

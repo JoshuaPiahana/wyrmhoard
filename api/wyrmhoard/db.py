@@ -339,6 +339,7 @@ def imports() -> list[dict[str, Any]]:
                       il.rows_new,
                       il.imported_at,
                       il.parser,
+                      il.producer,
                       COUNT(t.fingerprint) AS present,
                       MIN(t.date)          AS first_date,
                       MAX(t.date)          AS last_date

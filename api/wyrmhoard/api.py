@@ -12,11 +12,10 @@ nothing here should ever be reachable from outside the machine.
 
 from __future__ import annotations
 
-import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -24,10 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import __version__, accounts, cache, categorise, config, db, facts
+from . import __version__, accounts, cache, categorise, config, db, facts, properties
 from . import coach as coach_mod
 from .analysis import cashflow, entitlements, mortgage, recurring
-from .ingest import ingest_file, parse_csv
+from .ingest import ingest_document, parse_csv, resolve_within, safe_upload_name
 
 
 @asynccontextmanager
@@ -104,6 +103,14 @@ def setup_state() -> dict[str, Any]:
                 "why": "Nothing in a bank export can answer this, and the tool "
                 "would rather ask than assume. Answering it in household.yml "
                 "removes this permanently - including answering 'no'.",
+            }
+        )
+    for conflict in properties.summary()["conflicts"]:
+        todo.append(
+            {
+                "id": "property",
+                "label": "Record what your home is worth",
+                "why": conflict,
             }
         )
     for gap in accounts.likely_missing_accounts()[:2]:
@@ -207,6 +214,75 @@ def household() -> dict[str, Any]:
         # these can, and the difference changes what the coach says.
         "facts": facts.all_facts(),
     }
+
+
+# --------------------------------------------------------------------------
+# Properties
+#
+# The producer-facing surface. Anything outside Wyrmhoard that has worked out
+# what a house is worth - a person, an agent, a scraper somebody chose to run -
+# submits it here, saying who it is and where the figure came from. Wyrmhoard
+# never goes and looks; see SECURITY.md and docs/PRODUCERS.md.
+# --------------------------------------------------------------------------
+@app.get("/properties")
+def list_properties() -> dict[str, Any]:
+    """Every property, its most recent valuation, and the provenance of each."""
+    return properties.summary()
+
+
+class PropertyValuationRequest(BaseModel):
+    label: str
+    value: float
+    method: str
+    observed_at: str
+    producer: str
+    source: str | None = None
+    confidence: str | None = None
+    note: str | None = None
+    is_primary: bool = False
+
+
+@app.post("/properties/valuations")
+def record_valuation(req: PropertyValuationRequest) -> dict[str, Any]:
+    """
+    Record what a property is worth, and who says so.
+
+    Appends rather than replaces: an older claim is never destroyed by a newer
+    one, so a council rating value from three years ago and last month's
+    appraisal both remain, each with its own date and basis.
+    """
+    try:
+        result = properties.record_valuation(**req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    cache.clear_all()
+    return {**result, "properties": properties.summary()}
+
+
+class PropertyLoanRequest(BaseModel):
+    account: str
+    linked: bool = True
+
+
+@app.post("/properties/{property_id}/loans")
+def link_property_loan(property_id: int, req: PropertyLoanRequest) -> dict[str, Any]:
+    """Say which property a loan is secured on. Recorded, not yet computed from."""
+    try:
+        result = properties.link_loan(property_id, req.account, linked=req.linked)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    cache.clear_all()
+    return {**result, "properties": properties.summary()}
+
+
+@app.delete("/properties/{property_id}")
+def remove_property(property_id: int) -> dict[str, Any]:
+    try:
+        result = properties.delete(property_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    cache.clear_all()
+    return {**result, "properties": properties.summary()}
 
 
 # --------------------------------------------------------------------------
@@ -369,97 +445,41 @@ async def preview(file: UploadFile = File(...)) -> dict[str, Any]:
     return {"report": report.as_dict(), "sample_rows": rows[:10]}
 
 
-def safe_upload_name(raw_name: str | None) -> str:
-    """
-    Reduce an uploaded filename to something safe to join onto a directory.
-
-    The browser sends this, so it is attacker-controlled in principle: a name
-    like "../../../etc/cron.d/x" would otherwise escape the inbox entirely and
-    write wherever the process can reach.
-
-    The risk here is modest - the API is bound to loopback and used by one
-    household - but "it is only reachable locally" is exactly the reasoning
-    that ages badly the day somebody puts this behind a tunnel to show a
-    friend. Only the final path component is kept, separators and traversal
-    segments are dropped, and the result is verified to stay inside the inbox
-    by the caller.
-    """
-    name = PurePosixPath((raw_name or "").replace("\\", "/")).name
-    name = name.strip().lstrip(".")
-    # Parentheses are kept: browsers name repeat downloads "Export (1).csv"
-    # and the filename is shown back to the user in the import report, so
-    # mangling it for no security gain just makes the report confusing.
-    name = re.sub(r"[^A-Za-z0-9._ ()-]", "_", name)[:120].strip()
-    return name or "upload.csv"
-
-
 @app.post("/import")
 async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
+    """
+    One drop zone for everything the household has.
+
+    Working out which kind of document arrived is the tool's job, not theirs,
+    and that decision now lives in one place - `ingest.ingest_document` - so
+    the browser, the CLI and an agent all reach the same conclusion about the
+    same file.
+    """
     raw = await file.read()
     name = safe_upload_name(file.filename)
 
-    # One drop zone for everything the household has. Working out which kind
-    # of document arrived is the tool's job, not theirs.
-    if name.lower().endswith(".pdf"):
-        return _import_payslip(raw, name)
-
-    inbox = (config.DATA_DIR / "inbox").resolve()
-    inbox.mkdir(parents=True, exist_ok=True)
-
-    dest = (inbox / name).resolve()
-    # Belt and braces: even with the name sanitised, confirm the final path
-    # really is inside the inbox before writing anything.
-    if not dest.is_relative_to(inbox):
-        raise HTTPException(400, "Invalid filename.")
-
-    dest.write_bytes(raw)
-
-    report = ingest_file(dest)
-    coverage = categorise.recategorise_all()
-    return {"report": report.as_dict(), "coverage": coverage}
-
-
-def _import_payslip(raw: bytes, name: str) -> dict[str, Any]:
-    """
-    Read a payslip PDF and record it.
-
-    The PDF itself is written to data/payslips/ and never into the repo. Its
-    text is redacted of the IRD number before anything else touches it.
-    """
-    from .ingest.payslip import parse_pdf
-
-    folder = (config.DATA_DIR / "payslips").resolve()
+    folder = (
+        config.DATA_DIR / ("payslips" if name.lower().endswith(".pdf") else "inbox")
+    ).resolve()
     folder.mkdir(parents=True, exist_ok=True)
-    dest = (folder / name).resolve()
-    if not dest.is_relative_to(folder):
-        raise HTTPException(400, "Invalid filename.")
+    try:
+        # Belt and braces: even with the name sanitised, confirm the final path
+        # really is inside the folder before writing anything.
+        dest = resolve_within(folder, name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     dest.write_bytes(raw)
 
-    report = parse_pdf(dest)
-    stored = 0
-    if report.confidence != "low" and report.pay_date:
-        stored = db.save_payslip(
-            {
-                "employer": report.employee_ref,
-                "source_file": name,
-                "pay_date": report.pay_date,
-                "period": report.period,
-                "employee_ref": report.employee_ref,
-                "tax_code": report.tax_code,
-                "confidence": report.confidence,
-                **report.values,
-            }
-        )
-        cache.clear_all()
+    try:
+        result = ingest_document(dest, producer="human:dashboard")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
-    return {
-        "kind": "payslip",
-        "report": report.as_dict(),
-        "stored": stored,
-        # Said plainly: a payslip that did not balance is not recorded, because
-        # a wrong salary would quietly distort every entitlement figure.
-        "accepted": bool(stored),
-    }
+    if result["kind"] == "payslip":
+        cache.clear_all()
+        return result
+    return {**result, "coverage": categorise.recategorise_all()}
 
 
 @app.get("/payslips")
@@ -476,14 +496,6 @@ def remove_payslip(payslip_id: int) -> dict[str, Any]:
         raise HTTPException(404, "No such payslip.")
     cache.clear_all()
     return {"removed": removed}
-
-
-@app.post("/import-inbox")
-def import_inbox() -> dict[str, Any]:
-    from .ingest import ingest_inbox
-
-    reports = [r.as_dict() for r in ingest_inbox(config.DATA_DIR / "inbox")]
-    return {"reports": reports, "coverage": categorise.recategorise_all()}
 
 
 # --------------------------------------------------------------------------
