@@ -37,13 +37,9 @@ somebody chose to run a program that went and looked - see SECURITY.md, and
 
 from __future__ import annotations
 
-import contextlib
-import hashlib
-import re
-from datetime import date
 from typing import Any
 
-from . import db
+from . import db, provenance
 
 # How a value was arrived at. Ordered most to least authoritative, which is
 # also the order a caller should prefer when two claims cover the same date.
@@ -56,62 +52,11 @@ METHOD_LABELS = {
     "estimate": "Somebody's own estimate",
 }
 
-CONFIDENCES = ("high", "medium", "low")
-
-# `kind:name` - a person, an AI agent, or a program. The kind matters because
-# it says what kind of mistake to expect: a person mistypes, a scraper reads
-# the wrong element on a redesigned page.
-PRODUCER_KINDS = ("human", "agent", "tool")
-_PRODUCER_RE = re.compile(rf"^({'|'.join(PRODUCER_KINDS)}):[a-z0-9][a-z0-9_.-]*$")
-
-
-def _fingerprint(
-    property_id: int, value: float, observed_at: str, method: str, producer: str
-) -> str:
-    """
-    Identity of a claim, so re-submitting it is a no-op.
-
-    Deliberately excludes `received_at`: the same producer reporting the same
-    figure for the same date twice is one claim, whether that happens twice in
-    a minute or twice in a year. It includes the producer, because two sources
-    independently agreeing on a number is genuinely more information than one
-    source repeating itself.
-    """
-    payload = f"{property_id}|{value:.2f}|{observed_at}|{method}|{producer}"
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
-
-
-def _check_producer(producer: str) -> str:
-    producer = (producer or "").strip().lower()
-    if not producer:
-        raise ValueError(
-            "A producer is required: say what is submitting this, as "
-            f"'{PRODUCER_KINDS[0]}:name'. Data with no stated origin is exactly "
-            "what this contract exists to prevent."
-        )
-    if not _PRODUCER_RE.match(producer):
-        raise ValueError(
-            f"'{producer}' is not a producer name. Expected '<kind>:<name>' where "
-            f"kind is one of {', '.join(PRODUCER_KINDS)} - for example "
-            "'human:dashboard', 'agent:mcp', 'tool:rates-lookup'."
-        )
-    return producer
-
-
-def _check_observed_at(observed_at: Any) -> str:
-    if not observed_at:
-        raise ValueError(
-            "An observed_at date is required: the day this figure was true, "
-            "which is not necessarily today. Defaulting it would quietly turn a "
-            "number somebody half-remembers into a current valuation."
-        )
-    try:
-        when = date.fromisoformat(str(observed_at))
-    except ValueError as exc:
-        raise ValueError(f"'{observed_at}' is not an ISO date (YYYY-MM-DD).") from exc
-    if when > date.today():
-        raise ValueError(f"observed_at {when.isoformat()} is in the future.")
-    return when.isoformat()
+# Re-exported so callers and tests have one obvious place to look, but the
+# rules themselves live in provenance.py - a second kind of submitted data
+# must not be able to drift away from the first.
+CONFIDENCES = provenance.CONFIDENCES
+PRODUCER_KINDS = provenance.PRODUCER_KINDS
 
 
 def record_valuation(
@@ -136,8 +81,8 @@ def record_valuation(
     if not label:
         raise ValueError("A label is required - something like 'Home'.")
 
-    producer = _check_producer(producer)
-    observed_at = _check_observed_at(observed_at)
+    producer = provenance.check_producer(producer)
+    observed_at = provenance.check_observed_at(observed_at, "valuation")
 
     if method not in METHODS:
         raise ValueError(
@@ -145,16 +90,8 @@ def record_valuation(
             f"{', '.join(METHODS)}. Record what you actually have; calling an "
             "estimate an appraisal makes every figure derived from it wrong."
         )
-    if confidence is not None and confidence not in CONFIDENCES:
-        raise ValueError(
-            f"'{confidence}' is not a confidence. Expected one of: {', '.join(CONFIDENCES)}."
-        )
-    try:
-        value = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"'{value}' is not a number.") from exc
-    if value <= 0:
-        raise ValueError("A value must be positive.")
+    confidence = provenance.check_confidence(confidence)
+    value = provenance.check_amount(value, "value")
 
     property_id = db.set_property(label, is_primary=is_primary)
     added = db.add_valuation(
@@ -167,7 +104,9 @@ def record_valuation(
             "source": source,
             "confidence": confidence,
             "note": note,
-            "fingerprint": _fingerprint(property_id, value, observed_at, method, producer),
+            "fingerprint": provenance.fingerprint(
+                property_id, f"{value:.2f}", observed_at, method, producer
+            ),
         }
     )
 
@@ -184,13 +123,10 @@ def record_valuation(
 
 def _decorate(row: dict[str, Any]) -> dict[str, Any]:
     """Add what can be said about a stored claim without recomputing it."""
-    age_days = None
-    with contextlib.suppress(ValueError, TypeError):
-        age_days = (date.today() - date.fromisoformat(row["observed_at"])).days
     return {
         **row,
         "method_label": METHOD_LABELS.get(row.get("method", ""), row.get("method")),
-        "age_days": age_days,
+        "age_days": provenance.age_of(row.get("observed_at")),
     }
 
 

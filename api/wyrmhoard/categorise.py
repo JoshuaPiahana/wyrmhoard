@@ -21,7 +21,7 @@ from typing import Any
 
 import yaml
 
-from . import config, db
+from . import config, db, provenance
 
 _PUNCT_RE = re.compile(r"[^A-Z0-9 ]+")
 _WS_RE = re.compile(r"\s+")
@@ -358,7 +358,7 @@ def _check_pattern(pattern: str) -> None:
         )
 
 
-def _append_pattern(category: str, pattern: str) -> bool:
+def _append_pattern(category: str, pattern: str, producer: str) -> bool:
     """Write the pattern into learned.yml. False if it was already there."""
     path = learned_path()
     doc: dict[str, Any] = {}
@@ -373,6 +373,19 @@ def _append_pattern(category: str, pattern: str) -> bool:
         return False
 
     patterns.append(pattern)
+
+    # Who taught what, and when. The patterns themselves stay a plain list so
+    # the file is still hand-editable and config.rules() needs no changes;
+    # this sits alongside as a record. Without it a rule an agent guessed at
+    # and one the household typed are indistinguishable a year later, which
+    # matters when a category's total looks wrong and somebody is working out
+    # which rule to doubt.
+    taught = doc.setdefault("taught", {}).setdefault(category, {})
+    taught[pattern] = {
+        "producer": producer,
+        "recorded_at": provenance.received_now(),
+    }
+
     path.parent.mkdir(parents=True, exist_ok=True)
     # width is set high so a long pattern is never folded across lines; the
     # cap above keeps the result inside the project's 100-column yamllint.
@@ -383,7 +396,7 @@ def _append_pattern(category: str, pattern: str) -> bool:
     return True
 
 
-def learn(pattern: str, category: str) -> dict[str, Any]:
+def learn(pattern: str, category: str, producer: str = "human:unknown") -> dict[str, Any]:
     """
     Record one pattern against a category, then re-run categorisation.
 
@@ -420,7 +433,8 @@ def learn(pattern: str, category: str) -> dict[str, Any]:
     # the essentials total, and with it the weeks-of-runway figure on the
     # overview. Silently. So both halves are reported.
     before = {tx["fingerprint"]: (tx["category"], tx["grp"]) for tx in db.all_transactions()}
-    added = _append_pattern(category, pattern)
+    producer = provenance.check_producer(producer)
+    added = _append_pattern(category, pattern, producer)
 
     # recategorise_all() reloads config first, so the pattern just written is
     # compiled before anything is matched against it.

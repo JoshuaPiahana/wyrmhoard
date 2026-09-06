@@ -420,7 +420,7 @@ def teach_category(match: str, category: str) -> dict[str, Any]:
         category: the category key to file it under.
     """
     try:
-        result = categorise.learn(match, category)
+        result = categorise.learn(match, category, producer="agent:mcp")
     except ValueError as exc:
         return {
             "ok": False,

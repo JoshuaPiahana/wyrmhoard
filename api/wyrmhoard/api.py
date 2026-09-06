@@ -407,7 +407,7 @@ def learn_rule(req: LearnRequest) -> dict[str, Any]:
     file format and the reporting of moved spending are the same either way.
     """
     try:
-        return categorise.learn(req.match, req.category)
+        return categorise.learn(req.match, req.category, producer="human:dashboard")
     except ValueError as exc:
         # The messages are written to be read by whoever asked, so pass them
         # through rather than replacing them with something generic.

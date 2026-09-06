@@ -483,3 +483,22 @@ def test_teaching_reports_spending_it_moves_out_of_another_category(private_conf
 
     after = [tx for tx in db.all_transactions() if tx["memo"] == "COUNTDOWN NEWTOWN"]
     assert {tx["grp"] for tx in after} == {"discretionary"}
+
+
+def test_a_taught_rule_records_who_taught_it(private_config):
+    """
+    A rule an agent guessed at and one the household typed used to be
+    indistinguishable in learned.yml. That matters a year later, when a
+    category total looks wrong and somebody has to work out which rule to doubt.
+    """
+    load_unknown_spending(UNKNOWN, rows=3)
+    mcp_server.teach_category(match="QUAYSIDE", category="takeaways")
+
+    learned = yaml.safe_load((private_config / "learned.yml").read_text(encoding="utf-8"))
+    recorded = learned["taught"]["takeaways"]["QUAYSIDE"]
+
+    assert recorded["producer"] == "agent:mcp"
+    assert recorded["recorded_at"]
+
+    # And the extra key must not disturb how rules are read.
+    assert "QUAYSIDE" in config.rules()["categories"]["takeaways"]["match"]
