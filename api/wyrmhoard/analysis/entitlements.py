@@ -165,7 +165,7 @@ def estimate(as_at: date | None = None) -> dict[str, Any]:
         "caveats": [
             "This is an estimate from locally-stored rate constants, not an "
             "entitlement calculation. IRD's own calculator is authoritative.",
-            "It ignores shared care, child support, and any income the tool " "cannot see.",
+            "It ignores shared care, child support, and any income the tool cannot see.",
         ],
     }
 

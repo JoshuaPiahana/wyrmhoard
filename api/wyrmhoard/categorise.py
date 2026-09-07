@@ -237,8 +237,7 @@ def coverage() -> dict[str, Any]:
             "WHERE amount < 0 AND (grp = 'unknown' OR category = 'uncategorised')"
         ).fetchone()[0]
         n_unknown = conn.execute(
-            "SELECT COUNT(*) FROM transactions "
-            "WHERE grp = 'unknown' OR category = 'uncategorised'"
+            "SELECT COUNT(*) FROM transactions WHERE grp = 'unknown' OR category = 'uncategorised'"
         ).fetchone()[0]
         n_total = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
 
