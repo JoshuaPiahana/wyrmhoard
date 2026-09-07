@@ -3,14 +3,20 @@
 **Know your hoard to the last coin.**
 
 See where your household's money actually goes, decide what to change, and
-measure whether it worked — without your bank data ever leaving your computer.
+measure whether it worked — on your own machine, with a tool that never sends
+your data anywhere.
 
 [![CI](https://github.com/JoshuaPiahana/wyrmhoard/actions/workflows/ci.yml/badge.svg)](https://github.com/JoshuaPiahana/wyrmhoard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Most budgeting apps want your bank login, sell your spending data, or stop
-working when the subscription lapses. This one runs in two containers on your
-own machine, reads CSV files you export yourself, and talks to nothing.
+Most budgeting apps sell your spending data, or stop working when the
+subscription lapses. This one runs in two containers on your own machine, reads
+CSV files you export yourself, and makes no network requests of its own — ever.
+
+If you would rather not export CSVs by hand, you can run a **producer** that
+brings the data in for you. That is your choice to make, with the trade-off
+stated plainly; the tool itself still talks to nothing. See
+[docs/PRODUCERS.md](docs/PRODUCERS.md).
 
 It answers three questions:
 
@@ -212,9 +218,16 @@ wrong number is worse than an admitted gap.
 
 ## Privacy
 
-Your data never leaves your machine. No telemetry, no cloud, no accounts, no
-API keys, and no outbound network requests at runtime. Both containers bind to
-`127.0.0.1` only.
+Wyrmhoard never sends your data anywhere. No telemetry, no cloud, no accounts,
+no API keys, and no outbound network requests at runtime. Both containers bind
+to `127.0.0.1` only. That is enforced by a test, not just promised: the build
+fails if any module imports a network client.
+
+Data gets in through **producers** — you typing, an agent, a script you chose to
+run. Most are entirely local. Some, like a bridge to an open-banking provider,
+are not, and that provider then holds your transactions by design. Every record
+says which producer supplied it, so you can always see which of your data went
+through somebody else's hands and which never left the house.
 
 Two independent controls keep financial data out of git: `.gitignore`, and a
 guard script that runs on every commit and in CI — because `.gitignore` is a

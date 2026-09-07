@@ -169,14 +169,34 @@ an afterthought.
 These are not "not yet". They are "no", and they are why the tool can be
 trusted with the data it holds.
 
-- **Bank account linking / open banking.** Handing over credentials is exactly
-  the risk this project exists to avoid. CSV export is less convenient and far
-  safer.
-- **Any cloud sync, account system or telemetry.** See [SECURITY.md](SECURITY.md).
-- **Investment or product recommendations.** The tool does arithmetic and
-  points at official sources. It does not advise, and it will not carry
-  affiliate links.
+- **Wyrmhoard making any outbound request.** Not a rate table, not an update
+  check. Enforced by `api/tests/test_offline.py`, not merely promised. See
+  [SECURITY.md](SECURITY.md).
+- **Any cloud sync, account system or telemetry.**
+- **Advice, coaching or a financial philosophy in the core.** The tool computes
+  and refuses to guess; what the figures *mean* is a consumer's job, and
+  different households follow different plans. See
+  [ARCHITECTURE.md](ARCHITECTURE.md).
+- **Investment or product recommendations,** anywhere. Not in the core, and not
+  something this project will ship as a consumer either. No affiliate links,
+  ever.
 - **Gamification of spending.** Streaks and badges applied to a household's
   grocery budget turn financial stress into a game somebody is losing.
 - **Anything that ranks or shames.** No comparisons against "households like
-  yours". The report is read by children.
+  yours". Somebody's children may be sitting at the table when this is read
+  aloud.
+
+### One that moved off this list
+
+**Bank account linking / open banking** used to be here, on the grounds that
+handing over credentials is the risk this project exists to avoid.
+
+That reasoning was about *Wyrmhoard* holding them, and it still holds: it has
+no credential store, no API key, and no way to make a request. But a producer
+holding its own token is a different arrangement — a separate program, chosen
+by the household, whose risk they can weigh. Ruling it out was ruling out
+somebody else's decision.
+
+So it is permitted and documented rather than encouraged, and every row records
+which producer supplied it. CSV export remains the option that involves nobody
+else at all. See [docs/PRODUCERS.md](docs/PRODUCERS.md).

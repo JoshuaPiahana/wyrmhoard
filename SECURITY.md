@@ -5,10 +5,10 @@ so it is worth being explicit about what it does and does not do.
 
 ## The privacy promise
 
-**Your financial data never leaves your machine.**
+**Wyrmhoard never sends your data anywhere.**
 
 - No telemetry, no analytics, no crash reporting, no "anonymous usage stats".
-- No cloud sync, no accounts, no API keys, no third-party services.
+- No cloud sync, no accounts, no phoning home, no update checks.
 - The application makes **no outbound network requests at all** at runtime.
 - Both containers bind to `127.0.0.1` only, so the dashboard is not reachable
   from your home network, let alone the internet.
@@ -19,9 +19,36 @@ You can verify this rather than taking it on trust:
 docker compose exec api sh -c "cat /etc/hosts; netstat -tn 2>/dev/null || true"
 ```
 
+It is also enforced, not merely asserted. `api/tests/test_offline.py` fails the
+build if any module imports a network client, and asserts the sentence above is
+still in this file, word for word. Softening the promise means deleting a test
+in the same commit.
+
 There is one exception, and it is in the **test suite only**: the browser
 accessibility test loads `axe-core` from a CDN. It never runs as part of using
 the tool.
+
+### What you choose to run alongside it
+
+That promise is about Wyrmhoard. It is not a promise about every program on
+your machine, and it would be dishonest to imply otherwise.
+
+Data reaches Wyrmhoard through **producers** — a person typing, an AI agent, a
+script, a bridge to an open-banking provider. Some of those are entirely local.
+Some are not. A producer that fetches your transactions from an aggregator
+means that aggregator holds your transactions, on their servers, by design.
+That is the trade, and it is yours to make rather than ours to make for you.
+
+Two things follow, and both are the tool's job:
+
+- **Every record says where it came from.** Each row carries a `producer` —
+  `human:dashboard`, `agent:mcp`, `tool:akahu`. You can always see which of
+  your data arrived through a third party, and which never left the house.
+- **A producer must be honest about what it implies.** `docs/PRODUCERS.md`
+  requires it to say so plainly, before you install it rather than after.
+
+Wyrmhoard itself never holds a credential for anything, never has an API key,
+and cannot make a request. If you install nothing, nothing leaves.
 
 ## What is stored, and where
 

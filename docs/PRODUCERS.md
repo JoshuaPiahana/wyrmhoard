@@ -111,24 +111,46 @@ Uploading through the dashboard does the same thing and records
 
 ---
 
-## What a producer may and may not be
-
-**May:** gather public information. A council's published rating value, a
-government rates table, an exchange rate, anything the household could look up
-themselves.
-
-**May not: touch bank credentials.** Bank account linking and open banking are
-on this project's permanent "no" list — see ROADMAP.md. Handing over banking
-credentials is precisely the risk this tool exists to avoid, and wrapping that
-in a "producer" does not change it. CSV export is less convenient and far
-safer.
+## What a producer owes the household
 
 A producer is always something the household chose to run. Wyrmhoard will never
-start one, and cannot: it has no way to make an outbound request.
+start one, and cannot: it has no way to make an outbound request. So the
+question is never "is this allowed" — it is "does the person running it
+understand what it does".
 
-If a producer *does* reach a third party — an agent watching a mailbox, say —
-that mailbox is the one place data leaves the machine. Say so, out loud, to
-whoever is running it. Deliberate, documented, and off by default.
+**Say what it touches, before it is installed.** A producer that reads a
+council's published rating value and one that connects to an open-banking
+aggregator are different propositions. The second means that provider holds
+your transactions on their servers, by design and continuously. That is a real
+trade with real benefits — no monthly CSV export — and the household is
+entitled to weigh it themselves rather than have it made invisible.
+
+**Name yourself accurately.** `tool:akahu` and `human:dashboard` are different
+kinds of claim, and the difference is visible forever in the ledger. Somebody
+reviewing their data in two years should be able to see which of it passed
+through a third party.
+
+**Never ask Wyrmhoard to hold a credential.** It has no store for one, no way
+to use one, and no way to make a request with one. A producer holds what it was
+given, in its own configuration, under its own security. Keep it that way — a
+credential that reaches this database is a credential in a file that gets
+backed up to wherever the household copies their ledger.
+
+**Prefer the least data that answers the question.** An aggregator that can
+return five years of every account should not be configured to, if one account
+and twelve months is what the household wanted.
+
+### On open banking
+
+This project used to list bank linking as a permanent "no", on the grounds that
+handing over credentials is the risk it exists to avoid. That reasoning was
+about *Wyrmhoard* holding them. It does not, it cannot, and a producer holding
+its own token is a different arrangement with a different risk, borne by a
+program the household chose.
+
+So it is permitted, and it is documented rather than encouraged. CSV export
+remains the option that involves nobody else at all, and it is still the
+default the README describes.
 
 ---
 
