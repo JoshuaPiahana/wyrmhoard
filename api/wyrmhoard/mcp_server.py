@@ -48,7 +48,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import __version__, accounts, categorise, config, db, facts, figures, properties, taxonomy
-from .analysis import cashflow, entitlements, income, mortgage, recurring
+from .analysis import cashflow, entitlements, income, mortgage, recurring, series
 
 server = MCPServer(
     "wyrmhoard",
@@ -245,10 +245,14 @@ def get_spending_breakdown(months: int = 6) -> dict[str, Any]:
     Spending by category over recent complete months.
 
     Each category reports a monthly and annual figure, its share of the total,
-    and which group it belongs to: essential, commitment (contractual, hard to
-    change quickly), sinking (lumpy annual bills), or discretionary. The
-    grouping is the useful part - it separates what a household could change
-    from what it cannot.
+    and which group the household filed it under. `taxonomy` says what those
+    group names mean here - do not assume the household uses the same words or
+    the same divisions as anybody else.
+
+    For a series over time rather than an average, use
+    `get_spending_over_time`, which is the one to reach for whenever the
+    question is about a trend, a comparison between two periods, or anything
+    the household wants plotted.
 
     Args:
         months: how many recent complete months to average over.
@@ -260,8 +264,51 @@ def get_spending_breakdown(months: int = 6) -> dict[str, Any]:
             "categories": rows,
             "small_purchases": leaks,
             "window_months": months,
+            "taxonomy": taxonomy.served(),
         }
     )
+
+
+@server.tool()
+def get_spending_over_time(
+    from_date: str | None = None,
+    to_date: str | None = None,
+    period: str = "fortnight",
+    categories: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Spending per category, per period, across a date range.
+
+    This is the tool for any question about change - "is our fuel spending
+    going up", "what did groceries cost each fortnight last year", "compare
+    this winter to last". Everything else here averages a recent window and
+    cannot answer those.
+
+    Periods are `week`, `fortnight` or `month`. Prefer `fortnight` for a
+    household paid fortnightly: calendar months hold two pay days sometimes and
+    three others, so a monthly series shows swings that are the calendar
+    moving rather than the household. `anchor_source` in the reply says what
+    the fortnights are lined up to, and whether that alignment means anything -
+    read it before drawing conclusions about a cycle.
+
+    `totals` lines up with `periods` by position. Periods the ledger cannot
+    answer for - one still in progress, or before the imported data starts -
+    are returned with `complete: false` rather than dropped. A zero in a
+    complete period is a real observation; a zero in an incomplete one is not.
+    `per_period` already excludes incomplete periods.
+
+    Args:
+        from_date: ISO date to start at. Defaults to the start of the ledger.
+        to_date: ISO date to end at. Defaults to the end of the ledger.
+        period: week | fortnight | month.
+        categories: category keys to include. Defaults to all of them, which on
+            a long range is a lot of numbers - name the few you care about.
+    """
+    try:
+        payload = series.spending(from_=from_date, to=to_date, period=period, categories=categories)
+    except ValueError as exc:
+        return {"error": str(exc), "allowed_periods": list(series.PERIODS)}
+    return _described(payload)
 
 
 @server.tool()

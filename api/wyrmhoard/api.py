@@ -17,13 +17,13 @@ from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import __version__, accounts, cache, categorise, config, db, facts, properties, taxonomy
-from .analysis import cashflow, entitlements, mortgage, recurring
+from .analysis import cashflow, entitlements, mortgage, recurring, series
 from .ingest import ingest_document, parse_csv, resolve_within, safe_upload_name
 
 
@@ -157,6 +157,31 @@ def monthly() -> list[dict[str, Any]]:
 @app.get("/categories")
 def categories(months: int = 6) -> list[dict[str, Any]]:
     return cashflow.by_category(months=months)
+
+
+@app.get("/series")
+def spending_series(
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    period: str = "fortnight",
+    category: list[str] | None = Query(None),
+) -> dict[str, Any]:
+    """
+    Spending per category, per period, across a date range.
+
+    `period` is `week`, `fortnight` or `month`. Fortnights align to the
+    household's pay day where one is known — a household paid every second
+    Thursday does not live in calendar months, and bucketing them that way
+    makes the calendar look like a change in behaviour.
+
+    Every period in the range is returned, including ones the ledger cannot
+    answer for, marked `complete: false`. Dropping them would draw a chart that
+    reads as "we spent nothing" over a gap in the data.
+    """
+    try:
+        return series.spending(from_=from_, to=to, period=period, categories=category)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/taxonomy")

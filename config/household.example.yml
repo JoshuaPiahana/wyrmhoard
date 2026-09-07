@@ -119,10 +119,22 @@ goals:
 
 settings:
   currency: NZD
+  # The date of any one of your pay days. Only used to line fortnightly and
+  # weekly figures up with when money actually arrives.
+  #
+  # It matters more than it looks if you are paid fortnightly. Calendar months
+  # hold two pay days sometimes and three others, so a monthly chart shows a
+  # swing every few months that is the calendar moving, not you. Anchoring to
+  # a real pay day makes each bucket one pay cycle.
+  #
+  # Any pay day will do - they are all the same number of fortnights apart.
+  # Leave it out and periods fall back to Mondays, which is arbitrary but at
+  # least consistent, and the tool says so in its answer rather than implying
+  # the alignment means something.
+  # pay_anchor: 2026-08-26
   # Spending below this is tracked as "small purchases" - the
   # death-by-a-thousand-cuts number that budgets usually miss entirely.
   small_transaction_threshold: 20
-  family_meeting_day: "first Sunday"
 
 # ---------------------------------------------------------------------------
 # Overrides. Only for correcting something the tool derived wrongly - never as
