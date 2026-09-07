@@ -140,21 +140,6 @@ function deriveRunway() {
   };
 }
 
-/**
- * Runway for a frozen snapshot, recomputed under today's UNAVOIDABLE.
- *
- * Recomputed rather than read back so the column is comparable down the page:
- * a household that reclassified a group last month would otherwise be
- * comparing two different questions. Snapshots taken before the groups were
- * frozen individually keep whatever figure they stored.
- */
-function snapshotRunway(m) {
-  if (!m?.by_group) return m?.runway_weeks ?? null;
-  const present = UNAVOIDABLE.filter(k => m.by_group[k] !== undefined);
-  const spend = present.reduce((sum, k) => sum + (m.by_group[k] || 0), 0);
-  if (!spend || m.cash === null || m.cash === undefined) return null;
-  return +(m.cash / (spend / WEEKS_PER_MONTH)).toFixed(1);
-}
 
 function deriveChoices() {
   const t = state.summary?.typical_month;
@@ -323,20 +308,18 @@ const RENDER = {
       </tr>`).join('');
   },
 
-  snapshots: el => {
-    const rows = state.snapshots || [];
+  notes: el => {
+    const rows = state.notes || [];
     if (!rows.length) {
-      el.innerHTML = '<tr><td colspan="6" class="muted">No snapshots yet. Take one after your first family meeting.</td></tr>';
+      el.innerHTML = '<tr><td colspan="4" class="muted">No notes yet. Write down what happened this month while you still remember it.</td></tr>';
       return;
     }
-    el.innerHTML = rows.slice().reverse().map(s => `
+    el.innerHTML = rows.map(n => `
       <tr>
-        <td>${esc(s.taken_on)}</td>
-        <td class="n">${money(s.metrics.net_median)}</td>
-        <td class="n">${money(s.metrics.spend_median)}</td>
-        <td class="n">${money(s.metrics.cash)}</td>
-        <td class="n">${snapshotRunway(s.metrics) ?? '—'}</td>
-        <td class="muted">${esc(s.note || '')}</td>
+        <td>${esc(n.observed_at)}</td>
+        <td>${esc(n.note)}</td>
+        <td class="muted">${esc(n.producer)}</td>
+        <td><button class="btn small" data-delete-note="${esc(n.id)}">Delete</button></td>
       </tr>`).join('');
   },
 
@@ -773,17 +756,17 @@ function renderBanners() {
 
 async function refresh() {
   const [setup, summary, recurring, entitlements, mortgage,
-         snapshots, unknowns, rules, accounts, loans, imports, backups,
+         notes, unknowns, rules, accounts, loans, imports, backups,
          payslipData, household, taxonomy] = await Promise.all([
     api('/setup'), api('/summary'), api('/recurring'),
-    api('/entitlements'), api('/mortgage'), api('/snapshots'),
+    api('/entitlements'), api('/mortgage'), api('/notes'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
     api('/imports'), api('/backups'), api('/payslips'), api('/household'),
     api('/taxonomy'),
   ]);
 
   Object.assign(state, {
-    setup, summary, recurring, entitlements, mortgage, snapshots, unknowns,
+    setup, summary, recurring, entitlements, mortgage, notes, unknowns,
     accounts, loans, imports, taxonomy,
     payslips: payslipData.payslips,
     income: payslipData.income,
@@ -871,20 +854,37 @@ function wire() {
   // nulled once the event finishes dispatching, so reading it after an await
   // throws — which silently skipped the refresh() that follows and left the
   // page showing stale data. Caught by the browser tests.
-  $('#btn-snapshot').addEventListener('click', async e => {
+  $('#btn-note').addEventListener('click', async e => {
     const btn = e.currentTarget;
+    const text = $('#note-text').value.trim();
+    if (!text) return;
     btn.disabled = true;
     try {
-      await api('/snapshots', {
+      await api('/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: $('#snap-note').value || null }),
+        body: JSON.stringify({
+          note: text,
+          // Blank means today. Filling it in is how you write up a month that
+          // has already ended without dating it as though it were now.
+          observed_at: $('#note-date').value || null,
+        }),
       });
-      $('#snap-note').value = '';
+      $('#note-text').value = '';
+      await refresh();
+    } catch (err) {
+      notify(err.message, 'bad');
       await refresh();
     } finally {
       btn.disabled = false;
     }
+  });
+
+  document.addEventListener('click', async ev => {
+    const id = ev.target?.dataset?.deleteNote;
+    if (!id) return;
+    await api(`/notes/${id}`, { method: 'DELETE' });
+    await refresh();
   });
 
   $('#btn-backup').addEventListener('click', async e => {

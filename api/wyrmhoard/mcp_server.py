@@ -43,6 +43,7 @@ transport off the network entirely:
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -527,26 +528,27 @@ def teach_category(match: str, category: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Progress
+# Notes
 # ---------------------------------------------------------------------------
 @server.tool()
-def get_progress() -> dict[str, Any]:
+def get_notes(limit: int | None = None) -> dict[str, Any]:
     """
-    Snapshots taken over time, so change is measured rather than remembered.
+    What the household said about past months, in their own words.
 
-    Each snapshot freezes the month's key figures. Comparing them is the only
-    way to answer "is this working?", which is the question a household
-    actually cares about.
+    This is the context the figures cannot supply. A fortnight where fuel
+    doubled means something quite different if the note for that month says
+    "drove to Auckland for the funeral", and an agent reasoning from the
+    numbers alone will draw the wrong conclusion confidently.
+
+    For the numbers themselves, use `get_spending_over_time`. This tool
+    replaced one that returned frozen copies of those figures, which went stale
+    against the ledger they were copied from.
+
+    Args:
+        limit: how many to return. Defaults to all of them.
     """
-    snaps = db.snapshots()
-    return {
-        "snapshots": snaps,
-        "count": len(snaps),
-        "note": (
-            "Take a snapshot after each monthly review. With fewer than two "
-            "there is nothing to compare."
-        ),
-    }
+    rows = db.notes(limit=limit)
+    return {"notes": rows, "count": len(rows)}
 
 
 @server.tool()
@@ -666,19 +668,36 @@ def record_property_value(
 
 
 @server.tool()
-def take_snapshot(note: str | None = None) -> dict[str, Any]:
+def record_note(note: str, observed_at: str | None = None) -> dict[str, Any]:
     """
-    Freeze this month's figures so future progress can be measured against
-    them.
+    Record what the household said about a month. This writes to disk.
 
-    Worth doing at the end of a monthly review. Snapshots are keyed by date, so
-    taking a second one on the same day replaces the first.
+    Worth doing at the end of a review, when somebody explains a month: what
+    they changed, what went wrong, what the unusual expense was. Those
+    sentences are the one thing this tool cannot reconstruct later from the
+    transactions, and nobody remembers them a year on.
+
+    Write down what the user actually said, not your reading of it. A note is a
+    record of their words; your interpretation belongs in your reply to them,
+    where they can disagree with it.
+
+    Notes append. Two notes about the same month both survive, and neither
+    replaces the other.
 
     Args:
-        note: what changed this month, in the household's own words.
+        note: what the household said, in their words.
+        observed_at: the date the note is ABOUT. Defaults to today, which is
+            wrong if they are describing a month that has already ended - pass
+            a date in that month instead.
     """
-    metrics = cashflow.snapshot_metrics()
-    return {"taken_on": db.save_snapshot(metrics, note=note), "metrics": metrics}
+    try:
+        return db.add_note(
+            note=note,
+            observed_at=observed_at or date.today().isoformat(),
+            producer="agent:mcp",
+        )
+    except ValueError as exc:
+        return {"stored": False, "error": str(exc)}
 
 
 # ---------------------------------------------------------------------------

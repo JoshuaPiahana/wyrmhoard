@@ -32,7 +32,7 @@
     <button role="tab" data-tab="spending"     aria-selected="false">Spending</button>
     <button role="tab" data-tab="repeats"      aria-selected="false">Repeats</button>
     <button role="tab" data-tab="entitlements" aria-selected="false">Entitlements</button>
-    <button role="tab" data-tab="progress"     aria-selected="false">Progress</button>
+    <button role="tab" data-tab="notes"        aria-selected="false">Notes</button>
     <button role="tab" data-tab="data"         aria-selected="false">Data</button>
   </nav>
 </header>
@@ -246,29 +246,32 @@
   </div>
 
   <!-- ================= PROGRESS ================= -->
-  <div class="panel" data-panel="progress" hidden>
+  <div class="panel" data-panel="notes" hidden>
     <section>
       <div class="section-head">
-        <h2>Snapshots</h2>
-        <span class="hint">Take one at the end of every family meeting — that's what makes progress measurable.</span>
+        <h2>Notes</h2>
+        <span class="hint">The figures are already in the ledger. This is for what they don't explain.</span>
       </div>
       <div class="card">
         <div class="row">
-          <input type="text" id="snap-note" placeholder="What changed this month?" style="flex:1; min-width:220px">
-          <button class="btn primary" id="btn-snapshot">Take snapshot</button>
+          <input type="date" id="note-date" style="min-width:150px">
+          <input type="text" id="note-text" placeholder="What changed this month?" style="flex:1; min-width:220px">
+          <button class="btn primary" id="btn-note">Add note</button>
         </div>
+        <p class="muted" style="margin-top:12px">
+          A fortnight where fuel doubled reads very differently next to
+          &ldquo;drove to Auckland for the funeral&rdquo;. That sentence is the one
+          thing this tool cannot work out later from your transactions.
+        </p>
       </div>
     </section>
     <section>
       <div class="card tablewrap" tabindex="0">
         <table>
           <thead>
-            <tr>
-              <th>Date</th><th class="n">Left over</th><th class="n">Spending</th>
-              <th class="n">Cash</th><th class="n">Runway</th><th>Note</th>
-            </tr>
+            <tr><th>About</th><th>Note</th><th>Recorded by</th><th></th></tr>
           </thead>
-          <tbody data-list="snapshots"></tbody>
+          <tbody data-list="notes"></tbody>
         </table>
       </div>
     </section>

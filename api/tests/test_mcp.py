@@ -115,9 +115,11 @@ def test_the_expected_tools_are_exposed():
         "get_income",
         "get_entitlements",
         "get_uncategorised",
+        "get_spending_over_time",
+        "get_notes",
         "teach_category",
         "import_document",
-        "take_snapshot",
+        "record_note",
         "list_transactions",
     ):
         assert expected in names, f"{expected} is missing from the agent contract"

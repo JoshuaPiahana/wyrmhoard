@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import Page, expect
 
-TABS = ["overview", "spending", "repeats", "entitlements", "progress", "data"]
+TABS = ["overview", "spending", "repeats", "entitlements", "notes", "data"]
 
 
 # ---------------------------------------------------------------------------
@@ -82,9 +82,9 @@ def test_selected_tab_is_marked_for_assistive_tech(dashboard: Page):
 
 
 def test_tab_choice_survives_a_reload(dashboard: Page):
-    dashboard.click('nav.tabs button[data-tab="progress"]')
+    dashboard.click('nav.tabs button[data-tab="notes"]')
     dashboard.reload(wait_until="networkidle")
-    expect(dashboard.locator('[data-panel="progress"]')).to_be_visible(timeout=15_000)
+    expect(dashboard.locator('[data-panel="notes"]')).to_be_visible(timeout=15_000)
 
 
 # ---------------------------------------------------------------------------
@@ -136,20 +136,18 @@ def test_entitlements_page_always_explains_itself(dashboard: Page):
 # ---------------------------------------------------------------------------
 # Interaction
 # ---------------------------------------------------------------------------
-def test_snapshot_can_be_taken_from_the_ui(dashboard: Page):
+def test_a_note_can_be_recorded_from_the_ui(dashboard: Page):
     """
-    Asserts the note appears rather than counting rows: snapshots are keyed by
-    date, so taking a second one on the same day replaces the first and the
-    row count does not move. Counting made this pass or fail depending on
-    which tests had run before it.
+    Asserts the text appears rather than counting rows, so the result does not
+    depend on which tests ran before this one.
     """
-    dashboard.click('nav.tabs button[data-tab="progress"]')
+    dashboard.click('nav.tabs button[data-tab="notes"]')
 
     note = f"e2e run {uuid4().hex[:8]}"
-    dashboard.fill("#snap-note", note)
-    dashboard.click("#btn-snapshot")
+    dashboard.fill("#note-text", note)
+    dashboard.click("#btn-note")
 
-    expect(dashboard.locator('[data-list="snapshots"]')).to_contain_text(note, timeout=20_000)
+    expect(dashboard.locator('[data-list="notes"]')).to_contain_text(note, timeout=20_000)
 
 
 def test_csv_upload_reports_what_the_parser_decided(dashboard: Page, tmp_path):

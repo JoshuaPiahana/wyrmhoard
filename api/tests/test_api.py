@@ -99,7 +99,7 @@ def test_health(client):
         "/transactions",
         "/uncategorised",
         "/rules",
-        "/snapshots",
+        "/notes",
         "/balances",
         "/properties",
     ],
@@ -248,16 +248,37 @@ def test_unknown_category_is_rejected(client):
 # ---------------------------------------------------------------------------
 # Progress
 # ---------------------------------------------------------------------------
-def test_snapshot_round_trip(client):
-    _import_sample(client)
+def test_notes_append_rather_than_replacing_each_other(client):
+    """
+    The defect that finished off snapshots.
 
-    res = client.post("/snapshots", json={"note": "first meeting"})
-    assert res.status_code == 200
+    `snapshots` keyed on the day it was taken and wrote with INSERT OR REPLACE,
+    so a second entry on the same day destroyed the first without a word. Two
+    notes about the same date must both survive.
+    """
+    first = client.post("/notes", json={"note": "cancelled two subscriptions"})
+    second = client.post("/notes", json={"note": "car needed an alternator"})
+    assert first.status_code == 200
+    assert second.status_code == 200
 
-    snaps = client.get("/snapshots").json()
-    assert len(snaps) == 1
-    assert snaps[0]["note"] == "first meeting"
-    assert "categorised_pct" in snaps[0]["metrics"]
+    notes = client.get("/notes").json()
+    assert len(notes) == 2
+    assert {n["note"] for n in notes} == {
+        "cancelled two subscriptions",
+        "car needed an alternator",
+    }
+
+
+def test_the_same_note_twice_is_stored_once(client):
+    """A producer run twice should not double up. Same rule as every import."""
+    payload = {"note": "same words", "observed_at": "2026-08-01"}
+    assert client.post("/notes", json=payload).json()["stored"] is True
+    assert client.post("/notes", json=payload).json()["stored"] is False
+    assert len(client.get("/notes").json()) == 1
+
+
+def test_an_empty_note_is_refused(client):
+    assert client.post("/notes", json={"note": "   "}).status_code == 422
 
 
 def test_reload_picks_up_config_changes(client):

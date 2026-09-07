@@ -149,7 +149,8 @@ Per the principle at the top, this is now the headline direction rather than
 an afterthought.
 
 - **An MCP server.** Tools for importing a document, fetching a computed
-  summary, asking what the tool cannot see, and taking a progress snapshot.
+  summary, asking for a series over any date range, asking what the tool
+  cannot see, and recording a note about a month.
   Summaries by default; raw transactions only when explicitly requested.
 - **Scheduled and remote input.** Forwarding a payslip to a mailbox an agent
   watches, which posts it to the local API, removes the monthly-export chore

@@ -599,22 +599,48 @@ def restore_backup(req: RestoreRequest) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# Progress
+# Notes
 # --------------------------------------------------------------------------
-class SnapshotRequest(BaseModel):
-    note: str | None = None
+class NoteRequest(BaseModel):
+    note: str
+    observed_at: str | None = None
+    producer: str = "human:dashboard"
+    source: str | None = None
 
 
-@app.get("/snapshots")
-def snapshots() -> list[dict[str, Any]]:
-    return db.snapshots()
+@app.get("/notes")
+def notes(limit: int | None = None) -> list[dict[str, Any]]:
+    """What the household said about a month, most recent first."""
+    return db.notes(limit=limit)
 
 
-@app.post("/snapshots")
-def take_snapshot(req: SnapshotRequest) -> dict[str, Any]:
-    metrics = cashflow.snapshot_metrics()
-    taken = db.save_snapshot(metrics, note=req.note)
-    return {"taken_on": taken, "metrics": metrics}
+@app.post("/notes")
+def add_note(req: NoteRequest) -> dict[str, Any]:
+    """
+    Record a note against a date.
+
+    `observed_at` is the day the note is *about*, which is not always today —
+    somebody writing up August in September is describing August. It defaults
+    to today only because that is the common case, never silently for a
+    producer that should know better.
+    """
+    try:
+        return db.add_note(
+            note=req.note,
+            observed_at=req.observed_at or date.today().isoformat(),
+            producer=req.producer,
+            source=req.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/notes/{note_id}")
+def remove_note(note_id: int) -> dict[str, Any]:
+    removed = db.delete_note(note_id)
+    if not removed:
+        raise HTTPException(404, f"No note with id {note_id}.")
+    return {"deleted": removed}
 
 
 class BalanceRequest(BaseModel):

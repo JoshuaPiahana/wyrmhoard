@@ -420,32 +420,6 @@ def trend(months: int = 12) -> dict[str, Any]:
     }
 
 
-def snapshot_metrics() -> dict[str, Any]:
-    """
-    The figures a snapshot freezes.
-
-    One definition, because the API, the CLI and the MCP server all take
-    snapshots and three copies of this list drifted apart the moment one of
-    them changed.
-
-    Spending is frozen per group rather than as an essentials-versus-choices
-    split. A household that reclassifies `health` next year should still be
-    able to read what March actually cost them, which a pre-summed pair of
-    totals cannot give back.
-    """
-    s = summary()
-    typ = s["typical_month"]
-    return {
-        "net_median": typ.get("net_median"),
-        "income_median": typ.get("income_median"),
-        "spend_median": typ.get("spend_median"),
-        "savings_rate_pct": typ.get("savings_rate_pct"),
-        "by_group": typ.get("by_group") or {},
-        "cash": s["cash"].get("total"),
-        "categorised_pct": s["coverage"]["categorised_pct"],
-    }
-
-
 @cache.by_ledger
 def summary() -> dict[str, Any]:
     """Everything the dashboard needs in one call."""

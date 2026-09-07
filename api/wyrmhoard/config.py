@@ -301,5 +301,5 @@ def reload() -> None:
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, DATA_DIR / "inbox", DATA_DIR / "snapshots", REPORT_DIR):
+    for d in (DATA_DIR, DATA_DIR / "inbox"):
         d.mkdir(parents=True, exist_ok=True)

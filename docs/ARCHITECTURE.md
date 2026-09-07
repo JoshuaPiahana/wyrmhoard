@@ -192,7 +192,7 @@ Written down so the gap is visible rather than discovered.
 | ~~`cash_position().runway_weeks`~~ | **Done.** The dashboard computes it, from one constant it can see | |
 | `trend().direction` / `.driver` | The numbers are facts; `improving` is a verdict | Consumer |
 | `income.from_payslips().notes` | A list of written advice | Consumer |
-| The `snapshots` table, `POST /snapshots`, `./hoard snapshot` | Freezes *derived* numbers. Rule 5 says observations append, and these are not observations — the ledger already holds what happened, so a snapshot is a second, staler copy of it that disagrees with the first as categorisation improves | Deleted, once time-range queries land |
+| ~~The `snapshots` table, `POST /snapshots`, `./hoard snapshot`~~ | **Done.** Removed once `GET /series` could answer for any date range. The note survived as `notes`, which appends — the old table keyed on the day it was taken and used `INSERT OR REPLACE`, so a second entry the same day destroyed the first | |
 | Tax year, KiwiSaver vocabulary, IRD redaction, NZ account formats | 115 NZ occurrences across 19 files | NZ pack |
 | Figures generally | Bare floats; currency appears once in the whole MCP surface | Rule 2 |
 
@@ -200,29 +200,31 @@ None of this is urgent. It is the order the work should happen in, and rule 2
 comes first — every extraction below it needs an interface to extract against,
 and doing it later means designing each of them twice.
 
-### Before deleting snapshots, read this
+### Why snapshots went, kept as the worked example
 
-**The order matters.** Time-range queries have to land first. The argument for
-removing snapshots is that any past month can be recomputed from the ledger on
-demand; until the core can answer an arbitrary `from`/`to` rather than only
-"the last N complete months", that is not true yet and the deletion would lose
-something real.
+The clearest case of rule 5 this codebase has produced, so it is written down
+rather than left in a commit message.
 
-**Two things in a snapshot are not reconstructible.** Everything else is
-arithmetic over records that are still there.
+A snapshot froze the month's computed figures next to a note. The figures were
+the wrong thing to store: they are arithmetic over transactions that are still
+sitting in the database, so a snapshot was a second and staler copy of them
+that drifted out of agreement with the first every time categorisation
+improved. **Observations append; derived numbers get recomputed.**
 
-- **The note** — *"what changed this month, in the household's own words"*. That
-  is a record, not a derived figure, so by the test at the top of this document
-  it belongs in the core. It should survive the deletion as a dated household
-  note, not go down with it.
-- **`categorised_pct` at the time.** The ledger stores current categories only,
-  so how much was understood back in March is gone. Losing this is fine: it is
-  a fact about the tool's progress, not about the household's money.
+The deletion waited for `GET /series`, because until the core could answer for
+an arbitrary `from`/`to` rather than only "the last N complete months", the
+claim that any past month is recomputable was not yet true.
 
-**There is a live defect in the meantime.** `snapshots` uses `taken_on` as its
-primary key with `INSERT OR REPLACE`, so a second snapshot on the same day
-silently destroys the first. Worth fixing on its own terms rather than waiting
-for the removal, because "silently destroys" is the part that matters.
+One thing in a snapshot was not reconstructible, and it survived: **the note**.
+"What changed this month, in the household's own words" is a record, not a
+derived figure, so by the test at the top of this document it belongs here.
+`categorised_pct` was the other, and was let go deliberately — how much the
+tool understood back in March is a fact about the tool, not the household.
+
+The old table keyed on the day it was taken and wrote with `INSERT OR REPLACE`,
+so a second snapshot on the same day silently destroyed the first. `notes`
+appends and de-duplicates on a fingerprint instead, which is the same rule
+every import already follows.
 
 ---
 

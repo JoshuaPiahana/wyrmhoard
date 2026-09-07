@@ -16,14 +16,14 @@ you stop using.
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import provenance
 from .config import DATA_DIR
 
 DB_PATH = DATA_DIR / "ledger.db"
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount        REAL NOT NULL,          -- negative = money out
     balance       REAL,
     category      TEXT,
-    grp           TEXT,                   -- essential/discretionary/...
+    grp           TEXT,                   -- whichever group the household declared
     categorised_by TEXT,                  -- rule | manual | unmatched
     source_file   TEXT,
     imported_at   TEXT NOT NULL
@@ -96,13 +96,28 @@ CREATE TABLE IF NOT EXISTS import_log (
     parser      TEXT
 );
 
--- Point-in-time snapshots. This is how progress becomes measurable rather
--- than remembered.
-CREATE TABLE IF NOT EXISTS snapshots (
-    taken_on TEXT PRIMARY KEY,
-    metrics  TEXT NOT NULL,               -- JSON blob
-    note     TEXT
+-- What the household said about a month, in their own words.
+--
+-- This replaced a `snapshots` table that froze computed figures alongside the
+-- note. Those figures were the wrong thing to store: they are arithmetic over
+-- transactions that are still sitting in this database, so a snapshot was a
+-- second and staler copy of them that drifted out of agreement with the first
+-- every time categorisation improved. Ask for a date range instead.
+--
+-- The note is the part no amount of arithmetic can give back. "We cancelled
+-- two subscriptions and the car needed a new alternator" explains a month in a
+-- way the numbers never will, and nobody remembers it a year later.
+CREATE TABLE IF NOT EXISTS notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    observed_at TEXT NOT NULL,             -- the day the note is ABOUT
+    received_at TEXT NOT NULL,             -- when Wyrmhoard stored it
+    producer    TEXT NOT NULL,             -- human:… | agent:… | tool:…
+    note        TEXT NOT NULL,
+    source      TEXT,
+    fingerprint TEXT NOT NULL UNIQUE       -- so a producer run twice inserts once
 );
+
+CREATE INDEX IF NOT EXISTS idx_notes_observed ON notes(observed_at);
 
 CREATE TABLE IF NOT EXISTS payslips (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -607,25 +622,48 @@ def overrides() -> dict[str, str]:
     return {r["fingerprint"]: r["category"] for r in rows}
 
 
-def save_snapshot(metrics: dict[str, Any], note: str | None = None) -> str:
-    taken = date.today().isoformat()
+def add_note(
+    note: str, observed_at: str, producer: str, source: str | None = None
+) -> dict[str, Any]:
+    """
+    Record what somebody said about a date. Appends; never overwrites.
+
+    The predecessor keyed on the day it was taken and used INSERT OR REPLACE,
+    so writing a second note on the same day silently destroyed the first.
+    Notes append, and two people can say different things about the same month
+    without one of them disappearing.
+    """
+    text = (note or "").strip()
+    if not text:
+        raise ValueError("A note needs some words in it.")
+
+    producer = provenance.check_producer(producer)
+    observed = provenance.check_observed_at(observed_at, what="note")
+    fp = provenance.fingerprint(observed, producer, text)
+
     with connect() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO snapshots (taken_on, metrics, note) VALUES (?,?,?)",
-            (taken, json.dumps(metrics, default=str), note),
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO notes
+               (observed_at, received_at, producer, note, source, fingerprint)
+               VALUES (?,?,?,?,?,?)""",
+            (observed, provenance.received_now(), producer, text, source, fp),
         )
-    return taken
+        stored = cur.rowcount > 0
+    return {"stored": stored, "observed_at": observed, "producer": producer, "note": text}
 
 
-def snapshots() -> list[dict[str, Any]]:
+def notes(limit: int | None = None) -> list[dict[str, Any]]:
+    """Every note, most recent first."""
+    sql = "SELECT * FROM notes ORDER BY observed_at DESC, id DESC"
+    if limit:
+        sql += f" LIMIT {int(limit)}"
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM snapshots ORDER BY taken_on").fetchall()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["metrics"] = json.loads(d["metrics"])
-        out.append(d)
-    return out
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+
+
+def delete_note(note_id: int) -> int:
+    with connect() as conn:
+        return conn.execute("DELETE FROM notes WHERE id = ?", (note_id,)).rowcount
 
 
 def set_manual_balance(

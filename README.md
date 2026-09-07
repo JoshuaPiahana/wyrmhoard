@@ -166,8 +166,10 @@ month.
 ./hoard summary     # headline numbers in the terminal
 ```
 
-Then take a snapshot from the **Progress** tab. That is what turns "it feels a
-bit better" into a number you can see next month.
+Then add a line on the **Notes** tab saying what happened — what you changed,
+what broke, what the unusual bill was. The numbers are already in the ledger
+and you can ask for any date range later; that sentence is the one thing the
+tool cannot work out for itself a year from now.
 
 Re-importing a file you have already imported is safe. Every transaction is
 fingerprinted, so overlapping exports de-duplicate themselves and you never
@@ -186,7 +188,8 @@ have to track what you already loaded.
 | `./hoard summary` | Headline numbers in the terminal |
 | `./hoard review` | Biggest uncategorised spending, largest first |
 | `./hoard recategorise` | Re-apply rules after editing `config/rules.yml` |
-| `./hoard snapshot` | Freeze this month's numbers |
+| `./hoard note "..."` | Write down what happened this month |
+| `./hoard notes` | What you have said about past months |
 | `./hoard loan` | Mortgage payoff scenarios |
 | `./hoard reset --yes` | Delete the ledger (your CSV files are untouched) |
 | `./hoard lint` / `test` / `e2e` / `check` | The quality gates |

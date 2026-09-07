@@ -11,6 +11,7 @@ Anything more elaborate than that will not survive contact with a busy month.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import typer
@@ -194,11 +195,35 @@ def summary() -> None:
 
 
 @app.command()
-def snapshot(note: str = typer.Option(None, help="What changed this month?")) -> None:
-    """Freeze this month's numbers so progress becomes measurable."""
-    metrics = cashflow.snapshot_metrics()
-    taken = db.save_snapshot(metrics, note=note)
-    console.print(f"[green]Snapshot saved[/green] for {taken}.")
+def note(
+    text: str = typer.Argument(..., help="What changed this month, in your own words."),
+    on: str = typer.Option(None, help="The date it is about. Defaults to today."),
+) -> None:
+    """Record a note against a date. The numbers are already in the ledger."""
+    result = db.add_note(
+        note=text,
+        observed_at=on or date.today().isoformat(),
+        producer="human:cli",
+    )
+    if result["stored"]:
+        console.print(f"[green]Noted[/green] against {result['observed_at']}.")
+    else:
+        console.print("[yellow]That exact note is already recorded for that date.[/yellow]")
+
+
+@app.command()
+def notes(limit: int = 20) -> None:
+    """What has been said about past months."""
+    rows = db.notes(limit=limit)
+    if not rows:
+        console.print("No notes yet.")
+        return
+    t = Table(title="Notes")
+    t.add_column("About")
+    t.add_column("Note")
+    for r in rows:
+        t.add_row(r["observed_at"], r["note"])
+    console.print(t)
 
 
 @app.command()
