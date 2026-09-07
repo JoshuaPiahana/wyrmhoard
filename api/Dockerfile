@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # libjpeg/zlib: pdfplumber leans on these for payslip parsing.
 # git: the financial-data guard uses `git ls-files` to check exactly what
