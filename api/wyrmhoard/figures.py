@@ -62,9 +62,13 @@ NON_CURRENCY = {
     "prior_months": "months",
     "recent_months": "months",
     # `weeks_of_essentials` is the trap this list exists for. The MCP surface
-    # renames `runway_weeks` on the way out, and the renamed field neither
-    # appears here by its original name nor carries a unit suffix - so it was
-    # silently reported as an amount of money until this was written down.
+    # used to rename `runway_weeks` on the way out, and the renamed field
+    # neither appeared here by its original name nor carried a unit suffix -
+    # so it was silently reported as an amount of money until this was written
+    # down. The core no longer computes either figure, because it needs
+    # somebody to decide what counts as essential; the entry stays so that a
+    # consumer reintroducing the name inherits the right unit rather than
+    # rediscovering the same bug.
     "weeks_of_essentials": "weeks",
     # Proportions that are not percentages
     "fraction_elapsed": "fraction of the tax year, 0 to 1",

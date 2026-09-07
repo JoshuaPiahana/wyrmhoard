@@ -105,7 +105,19 @@ therapy should say it once, and have every consumer respect it. If the
 taxonomy lived in each consumer instead, they would drift and disagree about
 the same household.
 
-So: the core *serves* the grouping as data and never sums by it.
+So: the core *serves* the grouping as data and never sums across groups. It
+reports what each group cost; adding two of them together is a consumer's
+call.
+
+The one exception is `kind` — `spend`, `income`, `transfer` or `unknown` —
+declared per group in `rules.yml`. That is a fact about which way money moved,
+not a judgement, and the core needs it so a supermarket refund is counted as
+income rather than as negative groceries. The name of a group and what goes in
+it stay entirely the household's.
+
+`api/tests/test_taxonomy.py` fails the build if any core module names one of
+the four judgement groups, because that is how they got welded into eighteen
+places the first time: nobody added them on purpose.
 
 ### 4. No jurisdiction in the core
 
@@ -176,8 +188,8 @@ Written down so the gap is visible rather than discovered.
 | ~~`coach.py`~~ | **Done.** 941 lines asserting one philosophy, removed | |
 | ~~`report.py` + template~~ | **Done.** 719 lines shaped around one household's family meeting | |
 | `analysis/entitlements.py` `estimate()` | Returns `severity` and written advice from an analysis module | NZ pack |
-| `cashflow.SPEND_GROUPS` | Four literal group names welded into 18 places across 7 files | Taxonomy served as data |
-| `cash_position().runway_weeks` | Needs to know what is essential | Consumer |
+| ~~`cashflow.SPEND_GROUPS`~~ | **Done.** The vocabulary is declared in `rules.yml` and served at `GET /taxonomy`; a guard test fails the build if a core module names a group | |
+| ~~`cash_position().runway_weeks`~~ | **Done.** The dashboard computes it, from one constant it can see | |
 | `trend().direction` / `.driver` | The numbers are facts; `improving` is a verdict | Consumer |
 | `income.from_payslips().notes` | A list of written advice | Consumer |
 | Tax year, KiwiSaver vocabulary, IRD redaction, NZ account formats | 115 NZ occurrences across 19 files | NZ pack |

@@ -21,7 +21,7 @@ from typing import Any
 
 import yaml
 
-from . import config, db, provenance
+from . import config, db, provenance, taxonomy
 
 _PUNCT_RE = re.compile(r"[^A-Z0-9 ]+")
 _WS_RE = re.compile(r"\s+")
@@ -144,9 +144,12 @@ def categorise_one(memo: str, amount: float = 0.0) -> tuple[str, str, str]:
         if rule.matches(haystack, squashed_haystack):
             group = rule.group
             # A rule can be right about the merchant but wrong about direction:
-            # a refund from a shop is income, not spending.
-            if group in {"essential", "discretionary", "sinking", "commitment"} and amount > 0:
-                group = "income"
+            # a refund from a shop is income, not spending. This asks the
+            # taxonomy which way a group points rather than naming the four
+            # groups it used to, so a household that renamed them keeps the
+            # same behaviour.
+            if taxonomy.is_spend(group) and amount > 0:
+                group = taxonomy.income_group()
             return rule.key, group, "rule"
     return "uncategorised", "unknown", "unmatched"
 
@@ -192,17 +195,15 @@ def recategorise_all() -> dict[str, Any]:
             key = overrides[fp]
             rule = idx.get(key)
             group = rule.group if rule else "unknown"
-            if (
-                group in {"essential", "discretionary", "sinking", "commitment"}
-                and tx["amount"] > 0
-            ):
-                group = "income"
+            if taxonomy.is_spend(group) and tx["amount"] > 0:
+                group = taxonomy.income_group()
             updates.append((key, group, "manual", fp))
             continue
         # A counterparty that is one of our own accounts settles it outright,
         # ahead of any text rule.
         if is_internal_transfer(tx.get("counterparty")):
-            updates.append(("transfer", "transfer", "counterparty", fp))
+            moves = taxonomy.keys_of_kind("transfer")
+            updates.append(("transfer", moves[0] if moves else "transfer", "counterparty", fp))
             continue
 
         # Match against every text column the bank gave us, not just the one

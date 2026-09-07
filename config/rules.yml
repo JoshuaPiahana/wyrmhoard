@@ -20,14 +20,36 @@
 # Correct a transaction in the UI and the tool appends the learned rule to
 # config/learned.yml so it never has to ask you twice.
 #
-# `group` drives the coaching maths and is the most important field here:
-#   essential      - keeps the family safe, warm, fed and employed
-#   commitment     - contractual, hard to change quickly (mortgage, insurance)
-#   sinking        - lumpy annual bills that should be saved for monthly
-#   discretionary  - genuinely choosable spending
-#   income / transfer / unknown
+# Each category names a `group`, and the groups themselves are declared below.
+# Nothing in the code knows what any group name means - see the note there.
 # ===========================================================================
 version: 1
+
+# ---------------------------------------------------------------------------
+# The grouping vocabulary.
+#
+# These names are YOURS. Rename them, replace them, or invent a different set
+# entirely - `blow` / `mojo` / `grow` if you follow Barefoot, needs / wants /
+# savings if you prefer - and everything keeps working, because nothing in the
+# code knows what any of them mean.
+#
+# `kind` is the one part that is structural rather than a preference. It says
+# whether a group is money going out, money coming in, or neither, which the
+# tool needs so that a refund from a shop is counted as income rather than as
+# negative spending. Only spend | income | transfer | unknown are understood.
+#
+# Which category belongs in which group is a judgement, and it is yours too. A
+# household with a child in weekly therapy may consider `health` essential;
+# another may not. Say it once here and every tool reading this agrees.
+# ---------------------------------------------------------------------------
+groups:
+  essential: {label: "Essentials", kind: spend}
+  commitment: {label: "Commitments", kind: spend}
+  sinking: {label: "Lumpy bills", kind: spend}
+  discretionary: {label: "Choices", kind: spend}
+  income: {label: "Income", kind: income}
+  transfer: {label: "Transfers", kind: transfer}
+  unknown: {label: "Unrecognised", kind: unknown}
 
 categories:
 

@@ -248,7 +248,7 @@ Full detail, including the threat model and what is **not** protected, is in
 ```
 config/
   household.yml     your household's facts (gitignored — copy the example)
-  rules.yml         merchant → category rules
+  rules.yml         merchant → category rules, and your own spending groups
   nz_rates.yml      entitlement constants, and whether they are verified
 data/
   inbox/            drop bank CSV exports here

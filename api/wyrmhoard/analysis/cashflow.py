@@ -19,9 +19,7 @@ from typing import Any
 
 import pandas as pd
 
-from .. import cache, categorise, config, db
-
-SPEND_GROUPS = {"essential", "discretionary", "sinking", "commitment"}
+from .. import cache, categorise, config, db, taxonomy
 
 
 def _empty_frame() -> pd.DataFrame:
@@ -75,8 +73,12 @@ def frame() -> pd.DataFrame:
     df["month"] = df["date"].dt.to_period("M").astype(str)
     df["grp"] = df["grp"].fillna("unknown")
     df["category"] = df["category"].fillna("uncategorised")
-    df["is_spend"] = (df["amount"] < 0) & (df["grp"] != "transfer")
-    df["is_income"] = (df["amount"] > 0) & (df["grp"] != "transfer")
+    # Money moved between the household's own accounts is neither earned nor
+    # spent. Which groups mean that is the household's declaration, not a
+    # literal here - see taxonomy.py.
+    moved = df["grp"].isin(taxonomy.keys_of_kind("transfer"))
+    df["is_spend"] = (df["amount"] < 0) & ~moved
+    df["is_income"] = (df["amount"] > 0) & ~moved
     return df
 
 
@@ -164,7 +166,7 @@ def typical_month(df: pd.DataFrame | None = None, months: int = 6) -> dict[str, 
 
     sub = df[df["month"].isin(recent)]
     by_group = {}
-    for grp in SPEND_GROUPS | {"unknown"}:
+    for grp in taxonomy.spending_groups():
         vals = (
             sub[(sub["grp"] == grp) & (sub["amount"] < 0)]
             .groupby("month")["amount"]
@@ -189,14 +191,11 @@ def typical_month(df: pd.DataFrame | None = None, months: int = 6) -> dict[str, 
         "savings_rate_pct": round(100 * (median_income - median_spend) / median_income, 1)
         if median_income > 0
         else None,
+        # Reported per group and never summed across them. Which groups add up
+        # to "what we have to spend" is the question two households answer
+        # differently without either being wrong, so a consumer decides it
+        # against GET /taxonomy.
         "by_group": by_group,
-        "essentials_total": round(
-            by_group.get("essential", 0)
-            + by_group.get("commitment", 0)
-            + by_group.get("sinking", 0),
-            2,
-        ),
-        "discretionary_total": round(by_group.get("discretionary", 0), 2),
         "lumpiness": round(abs(float(spd.mean()) - median_spend) / median_spend * 100, 1)
         if median_spend
         else 0.0,
@@ -324,12 +323,18 @@ def net_worth() -> dict[str, Any]:
 
 def cash_position() -> dict[str, Any]:
     """
-    Cash on hand, and how long it would last.
+    Cash on hand.
 
     Counts ASSET accounts only. Summing every balance in the export puts the
     mortgage in with the savings and reports a household's cash as a large
     negative number - which was the single most wrong figure this tool has
     produced. Loans are real, but they are debt, not spendable cash.
+
+    It used to answer "and how long would it last", which it cannot: that
+    needs somebody to decide which spending the household would keep paying,
+    and two reasonable households answer differently. A consumer divides this
+    total by whichever groups it considers unavoidable - `typical_month`
+    reports them separately and `GET /taxonomy` says what they are.
     """
     from .. import accounts as accounts_mod
 
@@ -348,12 +353,6 @@ def cash_position() -> dict[str, Any]:
     excluded = sorted(set(all_balances) - set(latest_balances_filtered))
 
     total = sum(latest_balances_filtered.values()) if latest_balances_filtered else declared
-    typ = typical_month(df)
-    essentials = typ.get("essentials_total") if typ.get("available") else None
-
-    weeks = None
-    if total is not None and essentials:
-        weeks = round(total / (essentials / 4.33), 1)
 
     return {
         "total": round(total, 2) if total is not None else None,
@@ -362,8 +361,6 @@ def cash_position() -> dict[str, Any]:
         # Named explicitly so nobody wonders why the total is smaller than the
         # sum of the accounts they can see in the export.
         "excluded_accounts": excluded,
-        "monthly_essentials": essentials,
-        "runway_weeks": weeks,
         "as_at": df["date"].max().date().isoformat() if not df.empty else None,
     }
 
@@ -420,6 +417,32 @@ def trend(months: int = 12) -> dict[str, Any]:
         else "worsening"
         if recent_net < prior_net
         else "flat",
+    }
+
+
+def snapshot_metrics() -> dict[str, Any]:
+    """
+    The figures a snapshot freezes.
+
+    One definition, because the API, the CLI and the MCP server all take
+    snapshots and three copies of this list drifted apart the moment one of
+    them changed.
+
+    Spending is frozen per group rather than as an essentials-versus-choices
+    split. A household that reclassifies `health` next year should still be
+    able to read what March actually cost them, which a pre-summed pair of
+    totals cannot give back.
+    """
+    s = summary()
+    typ = s["typical_month"]
+    return {
+        "net_median": typ.get("net_median"),
+        "income_median": typ.get("income_median"),
+        "spend_median": typ.get("spend_median"),
+        "savings_rate_pct": typ.get("savings_rate_pct"),
+        "by_group": typ.get("by_group") or {},
+        "cash": s["cash"].get("total"),
+        "categorised_pct": s["coverage"]["categorised_pct"],
     }
 
 

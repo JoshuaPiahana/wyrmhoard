@@ -87,7 +87,7 @@ def test_summary_is_serialisable_and_flags_that_there_is_no_data(empty_ledger):
     assert s["stats"]["transactions"] == 0
     assert s["typical_month"]["available"] is False
     assert "reason" in s["typical_month"]
-    assert s["cash"]["runway_weeks"] is None
+    assert s["cash"]["total"] is None
 
 
 def test_entitlements_declines_rather_than_inventing_a_number(empty_ledger):

@@ -47,7 +47,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, accounts, categorise, config, db, facts, figures, properties
+from . import __version__, accounts, categorise, config, db, facts, figures, properties, taxonomy
 from .analysis import cashflow, entitlements, income, mortgage, recurring
 
 server = MCPServer(
@@ -117,9 +117,15 @@ def get_overview() -> dict[str, Any]:
     """
     The household's financial position in one call. Start here.
 
-    Returns a typical month's income and spending, cash on hand and how many
-    weeks of essentials that covers, total debt, net worth, and the direction
-    of travel over recent months.
+    Returns a typical month's income and spending broken down by the
+    household's own spending groups, cash on hand, total debt, net worth, and
+    the direction of travel over recent months.
+
+    `taxonomy` says what each group in `by_group` means and whether it is money
+    in or money out. Read it before adding two groups together: this household
+    decided what belongs in each one, and how many weeks of cover they have
+    depends entirely on which of those groups you think they could stop
+    paying. That judgement is yours to make and to state, not this tool's.
 
     "Typical" means the median of complete months, not the mean, so one large
     car repair does not become somebody's normal monthly spending. The current
@@ -138,18 +144,17 @@ def get_overview() -> dict[str, Any]:
                 "income": typ.get("income_median"),
                 "spending": typ.get("spend_median"),
                 "left_over": typ.get("net_median"),
-                "essentials": typ.get("essentials_total"),
-                "discretionary": typ.get("discretionary_total"),
+                "by_group": typ.get("by_group"),
                 "months_used": typ.get("month_count"),
                 "available": typ.get("available"),
                 "note": typ.get("reason"),
             },
             "cash": {
                 "total": s["cash"].get("total"),
-                "weeks_of_essentials": s["cash"].get("runway_weeks"),
                 "excluded_accounts": s["cash"].get("excluded_accounts"),
                 "as_at": s["cash"].get("as_at"),
             },
+            "taxonomy": taxonomy.served(),
             "debt": s["debt"],
             "net_worth": {**s["net_worth"], "excludes": "the value of any property owned"},
             "trend": s["trend"],
@@ -625,18 +630,7 @@ def take_snapshot(note: str | None = None) -> dict[str, Any]:
     Args:
         note: what changed this month, in the household's own words.
     """
-    s = cashflow.summary()
-    typ = s["typical_month"]
-    metrics = {
-        "net_median": typ.get("net_median"),
-        "income_median": typ.get("income_median"),
-        "spend_median": typ.get("spend_median"),
-        "essentials": typ.get("essentials_total"),
-        "discretionary": typ.get("discretionary_total"),
-        "cash": s["cash"].get("total"),
-        "runway_weeks": s["cash"].get("runway_weeks"),
-        "categorised_pct": s["coverage"]["categorised_pct"],
-    }
+    metrics = cashflow.snapshot_metrics()
     return {"taken_on": db.save_snapshot(metrics, note=note), "metrics": metrics}
 
 

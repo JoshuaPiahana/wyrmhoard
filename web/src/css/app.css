@@ -113,12 +113,9 @@ section{margin-bottom:34px}
 /* ---- bars ----------------------------------------------------------- */
 .bar{display:flex; height:30px; border-radius:8px; overflow:hidden; border:1px solid var(--line)}
 .bar span{display:block; transition:width .3s ease}
-.seg-essential{background:#2c5f5a}
-.seg-commitment{background:#4a7c78}
-.seg-sinking{background:#8aa8a3}
-.seg-discretionary{background:#c9a227}
-.seg-income{background:#2f6f4e}
-.seg-unknown{background:#cfc9bd}
+/* Segment colours are set inline from GROUP_COLOURS in app.js. They used to
+   live here as .seg-essential and friends, which silently made a household
+   that renamed a group invisible on the chart. */
 .legend{display:grid; gap:8px; margin-top:14px}
 .legend .row{display:flex; align-items:center; gap:10px; font-size:14px}
 .dot{width:11px; height:11px; border-radius:3px; flex:none}

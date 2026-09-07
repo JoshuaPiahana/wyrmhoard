@@ -17,7 +17,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import categorise, config, db, samples
+from . import categorise, config, db, samples, taxonomy
 from .analysis import cashflow, entitlements, mortgage, recurring
 
 app = typer.Typer(add_completion=False, help="Household finance toolkit.")
@@ -159,12 +159,13 @@ def summary() -> None:
     )
     console.print(t)
 
+    labels = {g["key"]: g["label"] for g in taxonomy.served()["groups"]}
     g = Table(title="Where it goes")
     g.add_column("Group")
     g.add_column("Per month", justify="right")
     for name, value in sorted(typ["by_group"].items(), key=lambda kv: kv[1], reverse=True):
         if value:
-            g.add_row(name.title(), _money(value))
+            g.add_row(labels.get(name, name.title()), _money(value))
     console.print(g)
 
     leaks = s["small_leaks"]
@@ -176,10 +177,9 @@ def summary() -> None:
         )
 
     cash = s["cash"]
-    if cash.get("runway_weeks") is not None:
+    if cash.get("total") is not None:
         console.print(
-            f"Cash on hand {_money(cash['total'])} - about "
-            f"[bold]{cash['runway_weeks']} weeks[/bold] of essentials."
+            f"Cash on hand {_money(cash['total'])} as at {cash.get('as_at') or 'unknown'}."
         )
 
     rec = recurring.summary()
@@ -196,19 +196,7 @@ def summary() -> None:
 @app.command()
 def snapshot(note: str = typer.Option(None, help="What changed this month?")) -> None:
     """Freeze this month's numbers so progress becomes measurable."""
-    s = cashflow.summary()
-    typ = s["typical_month"]
-    metrics = {
-        "net_median": typ.get("net_median"),
-        "spend_median": typ.get("spend_median"),
-        "income_median": typ.get("income_median"),
-        "savings_rate_pct": typ.get("savings_rate_pct"),
-        "essentials": typ.get("essentials_total"),
-        "discretionary": typ.get("discretionary_total"),
-        "cash": s["cash"].get("total"),
-        "runway_weeks": s["cash"].get("runway_weeks"),
-        "categorised_pct": s["coverage"]["categorised_pct"],
-    }
+    metrics = cashflow.snapshot_metrics()
     taken = db.save_snapshot(metrics, note=note)
     console.print(f"[green]Snapshot saved[/green] for {taken}.")
 

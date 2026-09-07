@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import __version__, accounts, cache, categorise, config, db, facts, properties
+from . import __version__, accounts, cache, categorise, config, db, facts, properties, taxonomy
 from .analysis import cashflow, entitlements, mortgage, recurring
 from .ingest import ingest_document, parse_csv, resolve_within, safe_upload_name
 
@@ -157,6 +157,19 @@ def monthly() -> list[dict[str, Any]]:
 @app.get("/categories")
 def categories(months: int = 6) -> list[dict[str, Any]]:
     return cashflow.by_category(months=months)
+
+
+@app.get("/taxonomy")
+def taxonomy_declaration() -> dict[str, Any]:
+    """
+    The household's grouping vocabulary.
+
+    Read this before interpreting `by_group` anywhere else in the API. The
+    core reports what each group cost and never adds two of them together,
+    because which groups a household considers unavoidable is a judgement it
+    makes and this tool does not.
+    """
+    return taxonomy.served()
 
 
 @app.get("/recurring")
@@ -574,19 +587,7 @@ def snapshots() -> list[dict[str, Any]]:
 
 @app.post("/snapshots")
 def take_snapshot(req: SnapshotRequest) -> dict[str, Any]:
-    s = cashflow.summary()
-    typ = s["typical_month"]
-    metrics = {
-        "net_median": typ.get("net_median"),
-        "income_median": typ.get("income_median"),
-        "spend_median": typ.get("spend_median"),
-        "savings_rate_pct": typ.get("savings_rate_pct"),
-        "essentials": typ.get("essentials_total"),
-        "discretionary": typ.get("discretionary_total"),
-        "cash": s["cash"].get("total"),
-        "runway_weeks": s["cash"].get("runway_weeks"),
-        "categorised_pct": s["coverage"]["categorised_pct"],
-    }
+    metrics = cashflow.snapshot_metrics()
     taken = db.save_snapshot(metrics, note=req.note)
     return {"taken_on": taken, "metrics": metrics}
 

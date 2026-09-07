@@ -97,7 +97,74 @@ function notify(message, tone = 'info') {
   state.flash = { message, tone };
 }
 
-/* ---------- derived values -------------------------------------------- */
+/* ---------- derived values --------------------------------------------
+
+   This dashboard is a consumer. The API reports what each spending group
+   cost and deliberately never adds two of them together, because deciding
+   which spending a household could actually stop is a judgement and two
+   households answer it differently without either being wrong.
+
+   So the judgement is made here, in the open, in one line. If you disagree
+   with it, change UNAVOIDABLE — that is the whole of it. If you renamed your
+   groups in rules.yml and did not update this, the runway figure disappears
+   rather than quietly measuring the wrong thing.
+   ---------------------------------------------------------------------- */
+
+const UNAVOIDABLE = ['essential', 'commitment', 'sinking'];
+
+const WEEKS_PER_MONTH = 4.33;
+
+/** Monthly spending in the groups this dashboard treats as unavoidable. */
+function unavoidableSpend() {
+  const t = state.summary?.typical_month;
+  if (!t?.available) return null;
+  const present = UNAVOIDABLE.filter(k => t.by_group?.[k] !== undefined);
+  if (!present.length) return null;
+  return present.reduce((sum, k) => sum + (t.by_group[k] || 0), 0);
+}
+
+function deriveRunway() {
+  const cash = state.summary?.cash?.total;
+  const spend = unavoidableSpend();
+  if (cash === null || cash === undefined || !spend) {
+    return { weeks: null, note: 'Set UNAVOIDABLE in app.js to match your groups.' };
+  }
+  const idx = groupIndex();
+  const names = UNAVOIDABLE
+    .filter(k => state.summary.typical_month.by_group?.[k] !== undefined)
+    .map(k => idx[k]?.label || k);
+  return {
+    weeks: +(cash / (spend / WEEKS_PER_MONTH)).toFixed(1),
+    unavoidable: Math.round(spend),
+    note: `of ${names.join(', ').replace(/, ([^,]*)$/, ' and $1').toLowerCase()}`,
+  };
+}
+
+/**
+ * Runway for a frozen snapshot, recomputed under today's UNAVOIDABLE.
+ *
+ * Recomputed rather than read back so the column is comparable down the page:
+ * a household that reclassified a group last month would otherwise be
+ * comparing two different questions. Snapshots taken before the groups were
+ * frozen individually keep whatever figure they stored.
+ */
+function snapshotRunway(m) {
+  if (!m?.by_group) return m?.runway_weeks ?? null;
+  const present = UNAVOIDABLE.filter(k => m.by_group[k] !== undefined);
+  const spend = present.reduce((sum, k) => sum + (m.by_group[k] || 0), 0);
+  if (!spend || m.cash === null || m.cash === undefined) return null;
+  return +(m.cash / (spend / WEEKS_PER_MONTH)).toFixed(1);
+}
+
+function deriveChoices() {
+  const t = state.summary?.typical_month;
+  if (!t?.available) return { amount: null, against: null };
+  const unavoidable = unavoidableSpend();
+  const chosen = Object.entries(t.by_group || {})
+    .filter(([k]) => !UNAVOIDABLE.includes(k))
+    .reduce((sum, [, v]) => sum + (v || 0), 0);
+  return { amount: chosen, against: unavoidable };
+}
 
 function deriveHeadline() {
   const t = state.summary?.typical_month;
@@ -116,24 +183,53 @@ function deriveHeadline() {
 
 /* ---------- list renderers -------------------------------------------- */
 
-const GROUP_LABELS = {
-  essential:     'Essentials — food, power, fuel, health',
-  commitment:    'Commitments — mortgage, insurance, KiwiSaver',
-  sinking:       'Lumpy bills — rates, rego, Christmas',
-  discretionary: 'Choices — takeaways, subscriptions, shopping',
-  unknown:       'Not yet categorised',
+/* Named colours for the groups the shipped rules.yml declares; anything a
+   household invents falls through to the palette, in declaration order. */
+const GROUP_COLOURS = {
+  essential: '#2c5f5a', commitment: '#4a7c78', sinking: '#8aa8a3',
+  discretionary: '#c9a227', income: '#2f6f4e', unknown: '#cfc9bd',
 };
+const PALETTE = ['#2c5f5a', '#c9a227', '#4a7c78', '#8f6b4a', '#8aa8a3', '#7a5c7e'];
+
+function colourFor(key, index) {
+  return GROUP_COLOURS[key] || PALETTE[index % PALETTE.length];
+}
+
+/** The declared groups, keyed for lookup. Empty until /taxonomy has loaded. */
+function groupIndex() {
+  const out = {};
+  (state.taxonomy?.groups || []).forEach((g, i) => { out[g.key] = { ...g, order: i }; });
+  return out;
+}
+
+/**
+ * The biggest few categories in a group, for the legend.
+ *
+ * Read from what the household actually spent rather than written here as
+ * prose. The old hardcoded "Essentials — food, power, fuel, health" was wrong
+ * for anybody who moved a category, and silently so.
+ */
+function groupHint(key, limit = 4) {
+  const names = (state.summary?.by_category || [])
+    .filter(c => c.group === key)
+    .slice(0, limit)
+    .map(c => c.label.toLowerCase());
+  return names.length ? names.join(', ') : '';
+}
 
 function groupRows() {
   const t = state.summary?.typical_month;
   if (!t?.available) return [];
+  const idx = groupIndex();
   const entries = Object.entries(t.by_group).filter(([, v]) => v > 0);
   const total = entries.reduce((a, [, v]) => a + v, 0) || 1;
   return entries
     .sort((a, b) => b[1] - a[1])
     .map(([key, amount]) => ({
       key, amount, share: +(100 * amount / total).toFixed(1),
-      label: GROUP_LABELS[key] || key,
+      label: idx[key]?.label || key,
+      hint: groupHint(key),
+      colour: colourFor(key, idx[key]?.order ?? 0),
     }));
 }
 
@@ -141,15 +237,15 @@ const RENDER = {
 
   groupbar: el => {
     el.innerHTML = groupRows()
-      .map(g => `<span class="seg-${esc(g.key)}" style="width:${g.share}%" title="${esc(g.label)}"></span>`)
+      .map(g => `<span style="width:${g.share}%;background:${esc(g.colour)}" title="${esc(g.hint ? `${g.label} — ${g.hint}` : g.label)}"></span>`)
       .join('');
   },
 
   grouplegend: el => {
     el.innerHTML = groupRows().map(g => `
       <div class="row">
-        <span class="dot seg-${esc(g.key)}"></span>
-        <span>${esc(g.label)}</span>
+        <span class="dot" style="background:${esc(g.colour)}"></span>
+        <span>${esc(g.label)}${g.hint ? ` <span class="muted">— ${esc(g.hint)}</span>` : ''}</span>
         <span class="amt">${money(g.amount)}</span>
         <span class="shr">${g.share}%</span>
       </div>`).join('');
@@ -239,7 +335,7 @@ const RENDER = {
         <td class="n">${money(s.metrics.net_median)}</td>
         <td class="n">${money(s.metrics.spend_median)}</td>
         <td class="n">${money(s.metrics.cash)}</td>
-        <td class="n">${s.metrics.runway_weeks ?? '—'}</td>
+        <td class="n">${snapshotRunway(s.metrics) ?? '—'}</td>
         <td class="muted">${esc(s.note || '')}</td>
       </tr>`).join('');
   },
@@ -678,16 +774,17 @@ function renderBanners() {
 async function refresh() {
   const [setup, summary, recurring, entitlements, mortgage,
          snapshots, unknowns, rules, accounts, loans, imports, backups,
-         payslipData, household] = await Promise.all([
+         payslipData, household, taxonomy] = await Promise.all([
     api('/setup'), api('/summary'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
     api('/imports'), api('/backups'), api('/payslips'), api('/household'),
+    api('/taxonomy'),
   ]);
 
   Object.assign(state, {
     setup, summary, recurring, entitlements, mortgage, snapshots, unknowns,
-    accounts, loans, imports,
+    accounts, loans, imports, taxonomy,
     payslips: payslipData.payslips,
     income: payslipData.income,
     backups: backups.backups,
@@ -697,6 +794,8 @@ async function refresh() {
     headline: null,
   });
   state.headline = deriveHeadline();
+  state.runway = deriveRunway();
+  state.choices = deriveChoices();
   state.mortgageNote = mortgage.available
     ? `clears ${String(mortgage.base.payoff_date).slice(0, 4)} on current payments`
     : 'add rate + repayment to household.yml';

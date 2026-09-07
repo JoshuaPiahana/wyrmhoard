@@ -294,7 +294,9 @@ def reload() -> None:
     rates.cache_clear()
 
     from . import cache as _cache
+    from . import taxonomy as _taxonomy
 
+    _taxonomy.groups.cache_clear()
     _cache.clear_all()
 
 
