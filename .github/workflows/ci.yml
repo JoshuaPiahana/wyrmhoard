@@ -95,7 +95,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12"]
+        # 3.14 is what the container actually runs, so it has to be tested;
+        # an image on a version CI never exercises is an untested product.
+        # 3.11 stays as the floor for anyone installing natively.
+        python: ["3.11", "3.12", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
