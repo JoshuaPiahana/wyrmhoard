@@ -47,7 +47,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, accounts, categorise, config, db, facts, properties
+from . import __version__, accounts, categorise, config, db, facts, figures, properties
 from . import coach as coach_mod
 from .analysis import cashflow, entitlements, income, mortgage, recurring
 
@@ -94,6 +94,22 @@ def _provenance(**extra: Any) -> dict[str, Any]:
     }
 
 
+def _described(payload: dict[str, Any], **provenance_extra: Any) -> dict[str, Any]:
+    """
+    A response that says what its numbers mean.
+
+    Wraps the figures with their units and their provenance. Every read tool
+    returns through here, so a consumer never has to infer a currency from a
+    field name - which is the one thing an Australian tax pack, a coaching
+    script and an agent holding this next to a fitness tracker all depend on.
+    """
+    return {
+        **payload,
+        "units": figures.units(payload, config.household().currency),
+        "provenance": _provenance(**provenance_extra),
+    }
+
+
 # ---------------------------------------------------------------------------
 # The default entry point
 # ---------------------------------------------------------------------------
@@ -117,28 +133,29 @@ def get_overview() -> dict[str, Any]:
     """
     s = cashflow.summary()
     typ = s["typical_month"]
-    return {
-        "typical_month": {
-            "income": typ.get("income_median"),
-            "spending": typ.get("spend_median"),
-            "left_over": typ.get("net_median"),
-            "essentials": typ.get("essentials_total"),
-            "discretionary": typ.get("discretionary_total"),
-            "months_used": typ.get("month_count"),
-            "available": typ.get("available"),
-            "note": typ.get("reason"),
-        },
-        "cash": {
-            "total": s["cash"].get("total"),
-            "weeks_of_essentials": s["cash"].get("runway_weeks"),
-            "excluded_accounts": s["cash"].get("excluded_accounts"),
-        },
-        "debt": s["debt"],
-        "net_worth": {**s["net_worth"], "excludes": "the value of any property owned"},
-        "trend": s["trend"],
-        "currency": config.household().currency,
-        "provenance": _provenance(),
-    }
+    return _described(
+        {
+            "typical_month": {
+                "income": typ.get("income_median"),
+                "spending": typ.get("spend_median"),
+                "left_over": typ.get("net_median"),
+                "essentials": typ.get("essentials_total"),
+                "discretionary": typ.get("discretionary_total"),
+                "months_used": typ.get("month_count"),
+                "available": typ.get("available"),
+                "note": typ.get("reason"),
+            },
+            "cash": {
+                "total": s["cash"].get("total"),
+                "weeks_of_essentials": s["cash"].get("runway_weeks"),
+                "excluded_accounts": s["cash"].get("excluded_accounts"),
+                "as_at": s["cash"].get("as_at"),
+            },
+            "debt": s["debt"],
+            "net_worth": {**s["net_worth"], "excludes": "the value of any property owned"},
+            "trend": s["trend"],
+        }
+    )
 
 
 @server.tool()
@@ -197,20 +214,22 @@ def describe_data_gaps() -> dict[str, Any]:
             "treats it as unestablished rather than assuming an answer."
         )
 
-    return {
-        "has_gaps": bool(gaps),
-        "gaps": gaps,
-        "missing_accounts": missing,
-        "coverage": coverage,
-        "household_facts": facts.all_facts(),
-        "questions_for_the_household": unknown_facts,
-        "guidance": (
-            "State these limitations when answering. Do not present a figure as "
-            "settled if a gap above could change it."
-            if gaps
-            else "No significant gaps. Figures can be quoted with normal confidence."
-        ),
-    }
+    return _described(
+        {
+            "has_gaps": bool(gaps),
+            "gaps": gaps,
+            "missing_accounts": missing,
+            "coverage": coverage,
+            "household_facts": facts.all_facts(),
+            "questions_for_the_household": unknown_facts,
+            "guidance": (
+                "State these limitations when answering. Do not present a figure as "
+                "settled if a gap above could change it."
+                if gaps
+                else "No significant gaps. Figures can be quoted with normal confidence."
+            ),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -232,12 +251,13 @@ def get_spending_breakdown(months: int = 6) -> dict[str, Any]:
     """
     rows = cashflow.by_category(months=months)
     leaks = cashflow.small_leaks(months=months)
-    return {
-        "categories": rows,
-        "small_purchases": leaks,
-        "window_months": months,
-        "provenance": _provenance(),
-    }
+    return _described(
+        {
+            "categories": rows,
+            "small_purchases": leaks,
+            "window_months": months,
+        }
+    )
 
 
 @server.tool()
@@ -251,7 +271,7 @@ def get_recurring_commitments() -> dict[str, Any]:
     is worth confirming either way: a stopped payment might be a subscription
     ended, or a bill quietly in arrears.
     """
-    return {**recurring.summary(), "provenance": _provenance()}
+    return _described(recurring.summary())
 
 
 @server.tool()
@@ -268,7 +288,7 @@ def get_loans() -> dict[str, Any]:
     fraction of a percent. And banks post upcoming repayment changes as
     zero-dollar transactions, which are read and reported here.
     """
-    return {"loans": mortgage.infer_loans(), "provenance": _provenance()}
+    return _described({"loans": mortgage.infer_loans()})
 
 
 @server.tool()
@@ -282,7 +302,7 @@ def get_income() -> dict[str, Any]:
     employer's retirement contribution. Both inflate income in ways that are
     easy to miss, so `notes` explains whenever either applies.
     """
-    return {**income.from_payslips(), "provenance": _provenance()}
+    return _described(income.from_payslips())
 
 
 @server.tool()
@@ -299,14 +319,16 @@ def get_entitlements() -> dict[str, Any]:
     received, the useful output is "worth checking with the tax office", not a
     figure the household is owed.
     """
-    return {
-        "estimate": entitlements.estimate(),
-        "other_support_to_check": entitlements.checklist(),
-        "warning": (
-            "Estimates only. The tax office is authoritative and its own "
-            "calculator should be used before acting on any figure here."
-        ),
-    }
+    return _described(
+        {
+            "estimate": entitlements.estimate(),
+            "other_support_to_check": entitlements.checklist(),
+            "warning": (
+                "Estimates only. The tax office is authoritative and its own "
+                "calculator should be used before acting on any figure here."
+            ),
+        }
+    )
 
 
 @server.tool()
@@ -324,7 +346,7 @@ def get_recommendations() -> dict[str, Any]:
     financial stress, sometimes by children. State the number, name the
     option, and do not moralise about past spending.
     """
-    return {**coach_mod.summary(), "provenance": _provenance()}
+    return _described(coach_mod.summary())
 
 
 # ---------------------------------------------------------------------------
@@ -354,32 +376,33 @@ def get_uncategorised(limit: int = 50) -> dict[str, Any]:
     """
     groups = categorise.top_uncategorised(limit=limit)
     cover = categorise.coverage()
-    return {
-        "groups": [
-            {
-                "merchant": g["memo"],
-                "example_memo": g["example"],
-                "count": g["count"],
-                "total": g["total"],
-            }
-            for g in groups
-        ],
-        "returned": len(groups),
-        "uncategorised_spend": cover["uncategorised_spend"],
-        "uncategorised_count": cover["uncategorised_count"],
-        "valid_categories": config.declared_categories(),
-        "next_step": (
-            "Identify each merchant, then call `teach_category` with a distinctive "
-            "fragment of its name and one of `valid_categories`. Ask the household "
-            "about anything you cannot place - a wrong guess becomes a rule."
-        ),
-        "privacy_note": (
-            "These name where the household shops. They are here so unknown "
-            "merchants can be identified; use them for that and do not repeat them "
-            "wholesale."
-        ),
-        "provenance": _provenance(),
-    }
+    return _described(
+        {
+            "groups": [
+                {
+                    "merchant": g["memo"],
+                    "example_memo": g["example"],
+                    "count": g["count"],
+                    "total": g["total"],
+                }
+                for g in groups
+            ],
+            "returned": len(groups),
+            "uncategorised_spend": cover["uncategorised_spend"],
+            "uncategorised_count": cover["uncategorised_count"],
+            "valid_categories": config.declared_categories(),
+            "next_step": (
+                "Identify each merchant, then call `teach_category` with a distinctive "
+                "fragment of its name and one of `valid_categories`. Ask the household "
+                "about anything you cannot place - a wrong guess becomes a rule."
+            ),
+            "privacy_note": (
+                "These name where the household shops. They are here so unknown "
+                "merchants can be identified; use them for that and do not repeat them "
+                "wholesale."
+            ),
+        }
+    )
 
 
 @server.tool()
@@ -545,7 +568,7 @@ def get_property() -> dict[str, Any]:
 
     Nothing computes equity or a loan-to-value ratio from this yet.
     """
-    return {**properties.summary(), "provenance": _provenance()}
+    return _described(properties.summary())
 
 
 @server.tool()

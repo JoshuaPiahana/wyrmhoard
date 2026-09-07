@@ -315,6 +315,10 @@ def net_worth() -> dict[str, Any]:
         "assets": cash["total"],
         "liabilities": debt["total"],
         "net_worth": round(cash["total"] - debt["total"], 2),
+        # A balance is true on a day, not over a period. Without this the
+        # reader has to assume it means today, and after a month without an
+        # import that assumption is wrong by a month of spending.
+        "as_at": cash.get("as_at"),
     }
 
 
