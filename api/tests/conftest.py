@@ -43,7 +43,6 @@ def isolated_ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", data_dir / "ledger.db")
     monkeypatch.setattr(cache, "DATA_DIR", data_dir)
     monkeypatch.setattr(config, "DATA_DIR", data_dir)
-    monkeypatch.setattr(config, "REPORT_DIR", tmp_path / "reports")
 
     # Analysis results are cached against the ledger file, so a stale entry
     # from a previous test would survive the redirect.

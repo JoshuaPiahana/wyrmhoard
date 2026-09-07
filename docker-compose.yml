@@ -12,13 +12,11 @@ services:
       - ./api/tests:/app/tests
       - ./config:/config
       - ./data:/data
-      - ./reports:/reports
     environment:
       WYRMHOARD_CONFIG_DIR: /config
       WYRMHOARD_DATA_DIR: /data
-      WYRMHOARD_REPORT_DIR: /reports
-      # Without this the container runs UTC and every report is dated a day
-      # behind - NZ is 12-13 hours ahead, so "today" is almost always wrong.
+      # Without this the container runs UTC and every date is a day behind -
+      # NZ is 12-13 hours ahead, so "today" is almost always wrong.
       TZ: Pacific/Auckland
     command: uvicorn wyrmhoard.api:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
@@ -62,11 +60,9 @@ services:
       - ./api/wyrmhoard:/app/wyrmhoard
       - ./config:/config
       - ./data:/data
-      - ./reports:/reports
     environment:
       WYRMHOARD_CONFIG_DIR: /config
       WYRMHOARD_DATA_DIR: /data
-      WYRMHOARD_REPORT_DIR: /reports
       TZ: Pacific/Auckland
     stdin_open: true
     command: python -m wyrmhoard.mcp_server
@@ -89,11 +85,9 @@ services:
       - ./api/wyrmhoard:/app/wyrmhoard
       - ./config:/config
       - ./data:/data
-      - ./reports:/reports
     environment:
       WYRMHOARD_CONFIG_DIR: /config
       WYRMHOARD_DATA_DIR: /data
-      WYRMHOARD_REPORT_DIR: /reports
       WYRMHOARD_MCP_TRANSPORT: streamable-http
       WYRMHOARD_MCP_PORT: "8787"
       TZ: Pacific/Auckland

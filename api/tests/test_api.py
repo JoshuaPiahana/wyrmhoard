@@ -36,7 +36,6 @@ SAMPLE_CSV = "\n".join(
 def client(tmp_path, monkeypatch):
     """A client backed by a throwaway ledger, never the household's real one."""
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "REPORT_DIR", tmp_path / "reports")
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "ledger.db")
     monkeypatch.setattr(cache, "DATA_DIR", tmp_path)
     cache.clear_all()
