@@ -192,12 +192,37 @@ Written down so the gap is visible rather than discovered.
 | ~~`cash_position().runway_weeks`~~ | **Done.** The dashboard computes it, from one constant it can see | |
 | `trend().direction` / `.driver` | The numbers are facts; `improving` is a verdict | Consumer |
 | `income.from_payslips().notes` | A list of written advice | Consumer |
+| The `snapshots` table, `POST /snapshots`, `./hoard snapshot` | Freezes *derived* numbers. Rule 5 says observations append, and these are not observations — the ledger already holds what happened, so a snapshot is a second, staler copy of it that disagrees with the first as categorisation improves | Deleted, once time-range queries land |
 | Tax year, KiwiSaver vocabulary, IRD redaction, NZ account formats | 115 NZ occurrences across 19 files | NZ pack |
 | Figures generally | Bare floats; currency appears once in the whole MCP surface | Rule 2 |
 
 None of this is urgent. It is the order the work should happen in, and rule 2
 comes first — every extraction below it needs an interface to extract against,
 and doing it later means designing each of them twice.
+
+### Before deleting snapshots, read this
+
+**The order matters.** Time-range queries have to land first. The argument for
+removing snapshots is that any past month can be recomputed from the ledger on
+demand; until the core can answer an arbitrary `from`/`to` rather than only
+"the last N complete months", that is not true yet and the deletion would lose
+something real.
+
+**Two things in a snapshot are not reconstructible.** Everything else is
+arithmetic over records that are still there.
+
+- **The note** — *"what changed this month, in the household's own words"*. That
+  is a record, not a derived figure, so by the test at the top of this document
+  it belongs in the core. It should survive the deletion as a dated household
+  note, not go down with it.
+- **`categorised_pct` at the time.** The ledger stores current categories only,
+  so how much was understood back in March is gone. Losing this is fine: it is
+  a fact about the tool's progress, not about the household's money.
+
+**There is a live defect in the meantime.** `snapshots` uses `taken_on` as its
+primary key with `INSERT OR REPLACE`, so a second snapshot on the same day
+silently destroys the first. Worth fixing on its own terms rather than waiting
+for the removal, because "silently destroys" is the part that matters.
 
 ---
 
