@@ -5,6 +5,6 @@
 # browser binaries for its own version, so bumping one without the other
 # fails inside Playwright's startup and reads like a broken test rather than a
 # mismatched pin. test_layering.py asserts the two agree.
-pytest==8.3.4
-pytest-playwright==0.6.2
-playwright==1.49.1
+pytest==9.1.1
+pytest-playwright==0.9.0
+playwright==1.62.0
