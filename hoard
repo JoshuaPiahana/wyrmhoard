@@ -79,7 +79,7 @@ case "$cmd" in
   shell)    docker compose run --rm --no-deps api bash ;;
 
   # Everything else is a CLI subcommand.
-  ingest|sample|summary|review|recategorise|report|snapshot|loan|init|reset)
+  ingest|sample|summary|review|recategorise|snapshot|loan|init|reset)
             run "$cmd" "$@" ;;
 
   help|--help|-h)
@@ -96,7 +96,6 @@ Wyrmhoard - household finance
   ./hoard review             biggest uncategorised spending
   ./hoard recategorise       re-apply rules after editing config/rules.yml
   ./hoard summary            headline numbers in the terminal
-  ./hoard report             build the family meeting report
   ./hoard snapshot           freeze this month's numbers for progress tracking
   ./hoard loan               mortgage payoff scenarios
 
@@ -107,7 +106,7 @@ Wyrmhoard - household finance
   ./hoard check              all of the above, in the order CI runs them
   ./hoard build              rebuild the image after changing dependencies
 
-The monthly routine is:   ./hoard ingest && ./hoard report
+The monthly routine is:   ./hoard ingest && ./hoard summary
 USAGE
     ;;
   *) echo "Unknown command: $cmd. Try ./hoard help" >&2; exit 1 ;;

@@ -173,8 +173,8 @@ Written down so the gap is visible rather than discovered.
 
 | What | Problem | Where it should go |
 |---|---|---|
-| `coach.py` | 941 lines asserting one financial philosophy | Deleted; a consumer |
-| `report.py` + template | 719 lines shaped around one household's family meeting | Deleted; a consumer |
+| ~~`coach.py`~~ | **Done.** 941 lines asserting one philosophy, removed | |
+| ~~`report.py` + template~~ | **Done.** 719 lines shaped around one household's family meeting | |
 | `analysis/entitlements.py` `estimate()` | Returns `severity` and written advice from an analysis module | NZ pack |
 | `cashflow.SPEND_GROUPS` | Four literal group names welded into 18 places across 7 files | Taxonomy served as data |
 | `cash_position().runway_weeks` | Needs to know what is essential | Consumer |

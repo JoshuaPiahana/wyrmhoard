@@ -18,15 +18,22 @@ brings the data in for you. That is your choice to make, with the trade-off
 stated plainly; the tool itself still talks to nothing. See
 [docs/PRODUCERS.md](docs/PRODUCERS.md).
 
-It answers three questions:
+It answers two questions, exactly:
 
-1. **Where does it actually go?** Twelve months of transactions, categorised.
-2. **What would change things?** A short, ranked, costed list — not thirty tips.
-3. **Is it working?** Snapshots you take each month, so progress is measured
-   rather than remembered.
+1. **Where does it actually go?** Twelve months of transactions, categorised,
+   with every figure carrying its units and where it came from.
+2. **What is true that you cannot see?** Loan terms worked out from the loan's
+   own transactions. Income read off a payslip rather than guessed at.
+   Accounts money arrives from that were never imported.
 
-It also produces a **printable report designed for a household meeting**,
-including a page written for children.
+**It does not tell you what to do about any of it.** Two households can read
+the same figures and reach opposite conclusions without either being wrong —
+one is paying down a mortgage, the other is following a plan out of a book —
+so the advice belongs to whatever reads this, not to this.
+
+What that buys you: the numbers are the same whichever tool interprets them.
+Point an AI at it, write your own script, or read the dashboard yourself. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **A wyrm knows its hoard to the last coin.** It does not guess, it is not
 > surprised, and nothing goes missing without being noticed. The gold is not
@@ -156,12 +163,11 @@ month.
 
 ```bash
 ./hoard ingest      # import whatever is in data/inbox/
-./hoard report      # build the household meeting report
+./hoard summary     # headline numbers in the terminal
 ```
 
-Then open `reports/latest.html`, sit down with it, and take a snapshot from
-the **Progress** tab when you are done. That snapshot is what turns "it feels
-a bit better" into a number you can see next month.
+Then take a snapshot from the **Progress** tab. That is what turns "it feels a
+bit better" into a number you can see next month.
 
 Re-importing a file you have already imported is safe. Every transaction is
 fingerprinted, so overlapping exports de-duplicate themselves and you never
@@ -180,7 +186,6 @@ have to track what you already loaded.
 | `./hoard summary` | Headline numbers in the terminal |
 | `./hoard review` | Biggest uncategorised spending, largest first |
 | `./hoard recategorise` | Re-apply rules after editing `config/rules.yml` |
-| `./hoard report` | Build the household meeting report |
 | `./hoard snapshot` | Freeze this month's numbers |
 | `./hoard loan` | Mortgage payoff scenarios |
 | `./hoard reset --yes` | Delete the ledger (your CSV files are untouched) |
@@ -248,13 +253,10 @@ config/
 data/
   inbox/            drop bank CSV exports here
   ledger.db         SQLite — your whole history in one backup-able file
-reports/            generated meeting reports (gitignored)
 api/wyrmhoard/
   ingest/           format-sniffing CSV parser
   categorise.py     memo → category
   analysis/         cash flow, recurring payments, debt payoff, entitlements
-  coach.py          ranked findings and the sequenced plan
-  report.py         the meeting report
   api.py            FastAPI — thin endpoints over the analysis
 web/src/            dashboard — no build step, no framework
 e2e/                browser tests

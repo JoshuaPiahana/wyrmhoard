@@ -30,7 +30,6 @@
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="overview"     aria-selected="true">Overview</button>
     <button role="tab" data-tab="spending"     aria-selected="false">Spending</button>
-    <button role="tab" data-tab="actions"      aria-selected="false">What to do</button>
     <button role="tab" data-tab="repeats"      aria-selected="false">Repeats</button>
     <button role="tab" data-tab="entitlements" aria-selected="false">Entitlements</button>
     <button role="tab" data-tab="progress"     aria-selected="false">Progress</button>
@@ -110,12 +109,6 @@
       <div data-list="loans"></div>
     </section>
 
-    <section>
-      <div class="section-head"><h2>Worth doing first</h2></div>
-      <div data-list="topfindings"></div>
-      <button class="btn" data-goto="actions">See the full list →</button>
-    </section>
-
   </div>
 
   <!-- ================= SPENDING ================= -->
@@ -165,40 +158,6 @@
             of essentials and commitments. The second number is hard to move quickly;
             the first is where a decision changes things fastest.
           </p>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <!-- ================= ACTIONS ================= -->
-  <div class="panel" data-panel="actions" hidden>
-    <section>
-      <div class="section-head">
-        <h2>What's worth doing</h2>
-        <span class="hint">Ranked by what it's worth against how hard it is.</span>
-      </div>
-      <div data-list="findings"></div>
-    </section>
-
-    <section>
-      <div class="section-head">
-        <h2>The order to do it in</h2>
-        <span class="hint">Sequence matters more than content.</span>
-      </div>
-      <div class="card"><ol class="plan" data-list="plan"></ol></div>
-    </section>
-
-    <section>
-      <div class="card">
-        <h3>Family meeting report</h3>
-        <p>
-          A printable report built for sitting round a table — one headline number,
-          what's working, what's worth doing, and a page for the kids.
-        </p>
-        <div class="row">
-          <button class="btn primary" id="btn-report">Build the report</button>
-          <a class="btn" id="link-report" href="/api/report/latest" target="_blank" hidden>Open latest →</a>
-          <span id="report-status" class="muted"></span>
         </div>
       </div>
     </section>

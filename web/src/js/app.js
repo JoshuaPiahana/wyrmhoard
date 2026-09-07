@@ -186,26 +186,6 @@ const RENDER = {
       </tr>`).join('');
   },
 
-  findings: el => renderFindings(el, state.coach?.findings || []),
-
-  topfindings: el => renderFindings(
-    el, (state.coach?.findings || []).filter(f => f.severity !== 'low').slice(0, 3)),
-
-  plan: el => {
-    el.innerHTML = (state.coach?.plan || []).map(s => {
-      const cls = s.status === 'done' ? 'done' : (s.status === 'in progress' ? 'now' : '');
-      const meter = s.progress_pct
-        ? `<div class="meter"><i style="width:${Math.min(100, s.progress_pct)}%"></i></div>
-           <div class="d">${s.progress_pct}% there</div>` : '';
-      return `<li class="${cls}">
-          <div class="t">${esc(s.title)}</div>
-          <div class="w">${esc(s.why)}</div>
-          ${meter}
-          <div class="d">Done when: ${esc(s.done_when)}</div>
-        </li>`;
-    }).join('');
-  },
-
   recurring: el => {
     const rows = state.recurring?.items || [];
     if (!rows.length) { el.innerHTML = '<tr><td colspan="6" class="muted">Nothing detected yet.</td></tr>'; return; }
@@ -628,18 +608,6 @@ const RENDER = {
   },
 };
 
-function renderFindings(el, findings) {
-  if (!findings.length) { el.innerHTML = '<p class="muted">Nothing to report yet.</p>'; return; }
-  el.innerHTML = findings.map(f => `
-    <div class="finding ${esc(f.severity)}">
-      ${f.amount ? `<div class="pill">${money(f.amount)} ${esc(f.unit)}</div>` : ''}
-      <h3>${esc(f.title)}</h3>
-      <p>${esc(f.body)}</p>
-      ${f.action ? `<div class="do"><b>Do this:</b> ${esc(f.action)}</div>` : ''}
-      ${f.evidence ? `<div class="ev">${esc(f.evidence)}</div>` : ''}
-    </div>`).join('');
-}
-
 function renderLists() {
   $$('[data-list]').forEach(el => {
     const fn = RENDER[el.dataset.list];
@@ -708,17 +676,17 @@ function renderBanners() {
 /* ---------- data ------------------------------------------------------- */
 
 async function refresh() {
-  const [setup, summary, coach, recurring, entitlements, mortgage,
+  const [setup, summary, recurring, entitlements, mortgage,
          snapshots, unknowns, rules, accounts, loans, imports, backups,
          payslipData, household] = await Promise.all([
-    api('/setup'), api('/summary'), api('/coach'), api('/recurring'),
+    api('/setup'), api('/summary'), api('/recurring'),
     api('/entitlements'), api('/mortgage'), api('/snapshots'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
     api('/imports'), api('/backups'), api('/payslips'), api('/household'),
   ]);
 
   Object.assign(state, {
-    setup, summary, coach, recurring, entitlements, mortgage, snapshots, unknowns,
+    setup, summary, recurring, entitlements, mortgage, snapshots, unknowns,
     accounts, loans, imports,
     payslips: payslipData.payslips,
     income: payslipData.income,
@@ -798,21 +766,6 @@ function wire() {
   drop.addEventListener('drop', e => {
     const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.csv'));
     if (files.length) uploadFiles(files);
-  });
-
-  $('#btn-report').addEventListener('click', async e => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    $('#report-status').innerHTML = '<span class="spinner"></span> Building…';
-    try {
-      const r = await api('/report', { method: 'POST' });
-      $('#report-status').textContent = `Written to reports/${r.filename}`;
-      $('#link-report').hidden = false;
-    } catch (err) {
-      $('#report-status').textContent = err.message;
-    } finally {
-      btn.disabled = false;
-    }
   });
 
   // NOTE: capture the button BEFORE the first await. `event.currentTarget` is

@@ -15,6 +15,3 @@ python-dateutil==2.9.0.post0
 # Payslip PDFs. Part of ingest, so part of the core.
 pdfplumber==0.11.5
 
-# The household meeting report is a core deliverable, produced by the CLI as
-# well as the web app, so its template engine belongs here.
-Jinja2==3.1.5

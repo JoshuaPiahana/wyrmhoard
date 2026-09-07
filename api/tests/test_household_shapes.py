@@ -82,15 +82,12 @@ def test_renter_gets_no_mortgage_findings(tmp_path, monkeypatch):
     write_household(
         tmp_path, monkeypatch, {"household": {"country": "NZ"}, "mortgage": {"balance": None}}
     )
-    from wyrmhoard import coach
+    from wyrmhoard.analysis import mortgage
 
-    findings = coach.build_findings()
-    ids = {f.id for f in findings}
-    assert "mortgage" not in ids
-    assert "mortgage_missing" not in ids
-
-    plan_titles = " ".join(s["title"].lower() for s in coach.build_plan())
-    assert "mortgage" not in plan_titles
+    # No loan accounts in the ledger, and no declared mortgage, so there is
+    # nothing to derive. The tool must say so rather than computing over zero.
+    assert mortgage.infer_loans() == []
+    assert mortgage.from_household(config.household()).get("available") is not True
 
 
 def test_homeowner_with_mortgage_still_gets_the_maths(tmp_path, monkeypatch):
@@ -184,23 +181,6 @@ def test_non_nz_disables_entitlements_cleanly(tmp_path, monkeypatch, country):
     assert "New Zealand" in result["reason"]
     # It must not leak a number that somebody could mistake for their own.
     assert "total_estimate_annual" not in result
-
-
-def test_non_nz_gets_no_kiwisaver_finding(tmp_path, monkeypatch):
-    write_household(tmp_path, monkeypatch, {"household": {"country": "GB"}})
-    from wyrmhoard import coach
-
-    assert "kiwisaver" not in {f.id for f in coach.build_findings()}
-
-
-def test_non_nz_plan_omits_the_entitlements_step(tmp_path, monkeypatch):
-    write_household(tmp_path, monkeypatch, {"household": {"country": "AU"}})
-    from wyrmhoard import coach
-
-    plan = coach.build_plan()
-    assert not any("entitled" in s["title"].lower() for s in plan)
-    # The plan must still be sequential with no numbering gaps.
-    assert [s["order"] for s in plan] == list(range(1, len(plan) + 1))
 
 
 def test_country_defaults_to_nz_and_is_case_insensitive(tmp_path, monkeypatch):

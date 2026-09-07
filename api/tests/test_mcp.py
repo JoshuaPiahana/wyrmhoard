@@ -114,7 +114,6 @@ def test_the_expected_tools_are_exposed():
         "get_loans",
         "get_income",
         "get_entitlements",
-        "get_recommendations",
         "get_uncategorised",
         "teach_category",
         "import_document",
@@ -193,7 +192,7 @@ def test_raw_transactions_carry_a_privacy_note():
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "tool",
-    ["get_overview", "get_spending_breakdown", "get_loans", "get_recommendations"],
+    ["get_overview", "get_spending_breakdown", "get_loans", "get_property"],
 )
 def test_figures_travel_with_their_provenance(tool):
     load_some_data()

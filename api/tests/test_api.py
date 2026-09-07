@@ -95,7 +95,6 @@ def test_health(client):
         "/recurring",
         "/entitlements",
         "/mortgage",
-        "/coach",
         "/household",
         "/transactions",
         "/uncategorised",
@@ -128,14 +127,6 @@ def test_summary_keeps_the_keys_the_frontend_binds_to(client):
         "trend",
     ):
         assert key in body, f"/summary lost '{key}' - the dashboard binds to it"
-
-
-def test_coach_keeps_its_contract(client):
-    body = client.get("/coach").json()
-    assert {"findings", "plan", "counts", "disclaimer"} <= set(body)
-    for finding in body["findings"]:
-        assert {"id", "title", "severity", "body"} <= set(finding)
-        assert finding["severity"] in {"critical", "high", "medium", "low", "win"}
 
 
 def test_setup_reports_what_is_still_missing(client):
@@ -267,14 +258,6 @@ def test_snapshot_round_trip(client):
     assert len(snaps) == 1
     assert snaps[0]["note"] == "first meeting"
     assert "categorised_pct" in snaps[0]["metrics"]
-
-
-def test_report_endpoint_writes_a_file(client):
-    _import_sample(client)
-    res = client.post("/report")
-
-    assert res.status_code == 200
-    assert Path(res.json()["path"]).exists()
 
 
 def test_reload_picks_up_config_changes(client):

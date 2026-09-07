@@ -94,7 +94,7 @@ def imported_modules(path: Path) -> set[str]:
 def test_there_are_modules_to_check():
     """Guards against the discovery above silently matching nothing."""
     names = {p.stem for p in package_modules()}
-    assert {"api", "db", "coach", "mcp_server"} <= names
+    assert {"api", "db", "properties", "mcp_server"} <= names
 
 
 @pytest.mark.parametrize("path", package_modules(), ids=lambda p: p.stem)

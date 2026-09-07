@@ -67,8 +67,8 @@ Each tier works standalone. None is required for the one below it.
 | You provide | You unlock | Effort |
 |---|---|---|
 | **Nothing** | The tool explains itself and runs on synthetic data so you can judge it before trusting it | 0 min |
-| **Bank CSV** | Cash flow, categories, recurring payments, small-spending leaks, monthly trend, the household report | 5 min |
-| **Household basics** (who lives here) | Goals sized to your real essential spending, buffer and runway targets, the sequenced plan | 5 min |
+| **Bank CSV** | Cash flow, categories, recurring payments, small-spending leaks, monthly trend | 5 min |
+| **Household basics** (who lives here) | Entitlement checks, and goals sized to your real essential spending | 5 min |
 | **Children's birth dates** | Entitlement checks — usually the single largest number the tool can find | 2 min |
 | **A payslip** | Verified gross income, PAYE and retirement contributions checked against what actually arrived, sharper entitlement estimates | 5 min |
 | **Mortgage details** | Payoff scenarios, interest-per-week, a refix reminder before the rate rolls over | 3 min |
@@ -140,10 +140,8 @@ missing thing is *worth*.
 
 - **A guided first run.** Currently `household.yml` is hand-edited. An
   in-browser editor would open this to people who will never touch YAML.
-- **Report history.** Reports are generated per date; there is no way to page
-  back through them in the UI.
-- **Translation.** The report is read aloud at kitchen tables. It should be
-  possible to read it in the language spoken there.
+- **Translation.** These figures get read aloud at kitchen tables. They should
+  be readable in the language spoken there.
 
 ### Being driven by an AI
 

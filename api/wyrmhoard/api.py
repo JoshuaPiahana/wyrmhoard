@@ -15,16 +15,14 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import __version__, accounts, cache, categorise, config, db, facts, properties
-from . import coach as coach_mod
 from .analysis import cashflow, entitlements, mortgage, recurring
 from .ingest import ingest_document, parse_csv, resolve_within, safe_upload_name
 
@@ -191,11 +189,6 @@ def loans() -> list[dict[str, Any]]:
     return mortgage.infer_loans()
 
 
-@app.get("/coach")
-def coach() -> dict[str, Any]:
-    return coach_mod.summary()
-
-
 @app.get("/household")
 def household() -> dict[str, Any]:
     hh = config.household()
@@ -211,7 +204,7 @@ def household() -> dict[str, Any]:
         "configured": (config.CONFIG_DIR / "household.yml").exists(),
         # Tri-state, each with the evidence behind it. An empty `people` list
         # above cannot distinguish "no children" from "not filled in yet";
-        # these can, and the difference changes what the coach says.
+        # these can, and the difference changes what the tool is willing to say.
         "facts": facts.all_facts(),
     }
 
@@ -620,24 +613,6 @@ def add_balance(req: BalanceRequest) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# Report
-# --------------------------------------------------------------------------
-@app.post("/report")
-def make_report() -> dict[str, Any]:
-    from .report import build_report
-
-    path = build_report()
-    return {"path": str(path), "filename": Path(path).name}
-
-
-@app.get("/report/latest")
-def latest_report():
-    reports = sorted(config.REPORT_DIR.glob("family-meeting-*.html"))
-    if not reports:
-        raise HTTPException(404, "No report generated yet.")
-    return FileResponse(reports[-1], media_type="text/html")
-
-
 @app.post("/reload")
 def reload_config() -> dict[str, Any]:
     """

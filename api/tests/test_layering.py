@@ -75,7 +75,7 @@ def imports_of(path: Path) -> set[str]:
 def test_there_are_core_modules_to_check():
     """Guards against the discovery above silently matching nothing."""
     names = {p.stem for p in core_modules()}
-    assert {"cashflow", "categorise", "db", "coach"} <= names
+    assert {"cashflow", "categorise", "db", "properties"} <= names
 
 
 @pytest.mark.parametrize("path", core_modules(), ids=lambda p: p.stem)

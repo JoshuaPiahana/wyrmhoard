@@ -48,7 +48,6 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import __version__, accounts, categorise, config, db, facts, figures, properties
-from . import coach as coach_mod
 from .analysis import cashflow, entitlements, income, mortgage, recurring
 
 server = MCPServer(
@@ -329,24 +328,6 @@ def get_entitlements() -> dict[str, Any]:
             ),
         }
     )
-
-
-@server.tool()
-def get_recommendations() -> dict[str, Any]:
-    """
-    Ranked findings and a sequenced plan.
-
-    Findings are ordered by what they are worth against how hard they are, and
-    each carries a severity and a costed amount. The plan is deliberately
-    ordered: a cash buffer comes before extra debt repayment, because
-    overpaying a loan with no buffer means borrowing it back at a worse rate
-    the first time something breaks.
-
-    Tone matters when relaying these. They are read by households under
-    financial stress, sometimes by children. State the number, name the
-    option, and do not moralise about past spending.
-    """
-    return _described(coach_mod.summary())
 
 
 # ---------------------------------------------------------------------------

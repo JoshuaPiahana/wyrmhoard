@@ -4,7 +4,7 @@ Command line interface.
 The monthly routine is meant to be two commands:
 
     docker compose run --rm api python -m wyrmhoard.cli ingest
-    docker compose run --rm api python -m wyrmhoard.cli report
+    docker compose run --rm api python -m wyrmhoard.cli summary
 
 Anything more elaborate than that will not survive contact with a busy month.
 """
@@ -211,15 +211,6 @@ def snapshot(note: str = typer.Option(None, help="What changed this month?")) ->
     }
     taken = db.save_snapshot(metrics, note=note)
     console.print(f"[green]Snapshot saved[/green] for {taken}.")
-
-
-@app.command()
-def report(open_after: bool = False) -> None:
-    """Build the family meeting report."""
-    from .report import build_report
-
-    path = build_report()
-    console.print(f"[green]Report written to[/green] {path}")
 
 
 @app.command()

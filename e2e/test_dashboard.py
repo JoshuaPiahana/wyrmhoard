@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import Page, expect
 
-TABS = ["overview", "spending", "actions", "repeats", "entitlements", "progress", "data"]
+TABS = ["overview", "spending", "repeats", "entitlements", "progress", "data"]
 
 
 # ---------------------------------------------------------------------------
@@ -97,18 +97,6 @@ def test_spending_table_has_rows(dashboard: Page):
     assert rows.count() > 3
 
 
-def test_findings_are_rendered_with_severity(dashboard: Page):
-    dashboard.click('nav.tabs button[data-tab="actions"]')
-    findings = dashboard.locator('[data-list="findings"] .finding')
-    expect(findings.first).to_be_visible()
-
-    classes = dashboard.evaluate(
-        """() => Array.from(document.querySelectorAll('[data-list="findings"] .finding'))
-              .map(el => el.className)"""
-    )
-    assert any(sev in " ".join(classes) for sev in ("critical", "high", "medium", "low", "win"))
-
-
 def test_the_group_bar_adds_up_to_the_full_width(dashboard: Page):
     """A stacked bar whose segments do not total 100% is visibly wrong."""
     total = dashboard.evaluate(
@@ -148,14 +136,6 @@ def test_entitlements_page_always_explains_itself(dashboard: Page):
 # ---------------------------------------------------------------------------
 # Interaction
 # ---------------------------------------------------------------------------
-def test_report_can_be_built_from_the_ui(dashboard: Page):
-    dashboard.click('nav.tabs button[data-tab="actions"]')
-    dashboard.click("#btn-report")
-    expect(dashboard.locator("#report-status")).to_contain_text(
-        re.compile("reports/|family-meeting"), timeout=30_000
-    )
-
-
 def test_snapshot_can_be_taken_from_the_ui(dashboard: Page):
     """
     Asserts the note appears rather than counting rows: snapshots are keyed by

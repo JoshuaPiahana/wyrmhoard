@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from wyrmhoard import cache, categorise, coach, config, db
+from wyrmhoard import cache, categorise, db
 from wyrmhoard.analysis import cashflow, entitlements, recurring
 
 
@@ -90,38 +90,7 @@ def test_summary_is_serialisable_and_flags_that_there_is_no_data(empty_ledger):
     assert s["cash"]["runway_weeks"] is None
 
 
-def test_coach_produces_a_usable_plan_with_no_data(empty_ledger):
-    """
-    A new user opening the app should get a starting point, not an empty page
-    or a stack trace.
-    """
-    result = coach.summary()
-    assert isinstance(result["findings"], list)
-    assert len(result["plan"]) >= 1
-    assert result["plan"][0]["status"] in {"todo", "in progress", "done"}
-    # Step numbering must stay contiguous however many steps were skipped.
-    assert [s["order"] for s in result["plan"]] == list(range(1, len(result["plan"]) + 1))
-
-
 def test_entitlements_declines_rather_than_inventing_a_number(empty_ledger):
     result = entitlements.estimate()
     assert result["available"] is False
     assert "total_estimate_annual" not in result
-
-
-def test_report_renders_from_an_empty_ledger(empty_ledger, tmp_path, monkeypatch):
-    """
-    The report is the deliverable. It must produce a real page saying there is
-    nothing to show yet, rather than failing to build at all.
-    """
-    from wyrmhoard import report
-
-    monkeypatch.setattr(config, "REPORT_DIR", tmp_path / "reports")
-    path = report.build_report(outdir=tmp_path / "reports")
-
-    html = Path(path).read_text(encoding="utf-8")
-    assert html.lstrip().startswith("<!doctype html>")
-    assert "Not enough data yet" in html
-    # No unrendered template syntax, and no Python None leaking into the page.
-    assert "{{" not in html
-    assert ">None<" not in html
