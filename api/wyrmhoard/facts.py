@@ -59,7 +59,7 @@ QUESTIONS = {
 
 WHY = {
     "has_children": (
-        "Their birth dates unlock the entitlement checks, and some credits turn " "on an exact age."
+        "Their birth dates unlock the entitlement checks, and some credits turn on an exact age."
     ),
     "has_partner": "Entitlements are assessed on combined household income.",
     "housing": (

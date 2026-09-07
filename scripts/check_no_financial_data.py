@@ -238,7 +238,7 @@ def main() -> int:
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         print(
-            "\nNothing containing real financial data may be committed to this " "repository.\n",
+            "\nNothing containing real financial data may be committed to this repository.\n",
             file=sys.stderr,
         )
         return 1

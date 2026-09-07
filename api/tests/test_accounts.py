@@ -206,9 +206,9 @@ def test_e2e_compose_override_isolates_the_data_directory():
     spec = yaml.load(override.read_text(encoding="utf-8"), Loader=ComposeLoader)
     mounts = spec["services"]["api"]["volumes"]
 
-    assert not any(
-        m.startswith("./data:") for m in mounts
-    ), "the e2e stack mounts the real ./data directory"
-    assert any(
-        m.startswith("e2e-data:") for m in mounts
-    ), "the e2e stack must use a throwaway volume for /data"
+    assert not any(m.startswith("./data:") for m in mounts), (
+        "the e2e stack mounts the real ./data directory"
+    )
+    assert any(m.startswith("e2e-data:") for m in mounts), (
+        "the e2e stack must use a throwaway volume for /data"
+    )

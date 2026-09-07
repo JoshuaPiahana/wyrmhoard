@@ -77,7 +77,7 @@ def ingest(
         r = result["report"]
         colour = {"high": "green", "medium": "yellow", "low": "red"}.get(r["confidence"], "white")
         console.print(
-            f"\n[bold]{r['filename']}[/bold]  " f"confidence [{colour}]{r['confidence']}[/{colour}]"
+            f"\n[bold]{r['filename']}[/bold]  confidence [{colour}]{r['confidence']}[/{colour}]"
         )
         if result["kind"] == "transactions":
             console.print(

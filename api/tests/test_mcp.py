@@ -173,9 +173,9 @@ def test_the_summary_does_not_grow_with_the_data():
     big_raw = len(json.dumps(mcp_server.list_transactions(limit=10_000)))
 
     assert big_raw > small_raw * 3, "fixture did not actually add much data"
-    assert (
-        big_summary < small_summary * 1.1
-    ), "the summary grows with transaction count - raw rows are leaking into it"
+    assert big_summary < small_summary * 1.1, (
+        "the summary grows with transaction count - raw rows are leaking into it"
+    )
 
 
 def test_the_overview_carries_no_merchant_names():
@@ -351,8 +351,7 @@ def test_an_import_records_which_agent_submitted_it():
 
     path = inbox_file(
         "traceable.csv",
-        "Account number,Date,Memo,Amount,Balance\n"
-        f"{ACCOUNT},03-01-2025,PAK N SAVE,-60.00,760.00\n",
+        f"Account number,Date,Memo,Amount,Balance\n{ACCOUNT},03-01-2025,PAK N SAVE,-60.00,760.00\n",
     )
     mcp_server.import_document(path)
 
