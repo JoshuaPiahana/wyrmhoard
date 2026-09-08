@@ -52,6 +52,11 @@ venv/
 .ruff_cache/
 .mypy_cache/
 *.egg-info/
+# `pip install .` leaves a complete second copy of the source tree here.
+# Untracked and unignored, it gets swept up by `git add -A` - and the copies
+# are stale from the moment they are made.
+build/
+dist/
 
 # Node / frontend build
 node_modules/
