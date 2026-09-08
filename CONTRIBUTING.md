@@ -46,9 +46,10 @@ CI runs the same things. If `./hoard check` passes locally, CI should pass too.
   a *synthetic* sample in the same shape, never your real file.
 - **Merchant rules for your region.** `config/rules.yml` is currently
   NZ-heavy. Rules for other countries make the tool useful to more people.
-- **A rates module for another country.** `config/nz_rates.yml` and
-  `api/wyrmhoard/analysis/entitlements.py` show the pattern. Entitlements are where
-  households lose the most money, and every country has its own.
+- **A jurisdiction pack for your country.** A separate program that reads this
+  tool's API or MCP surface and applies your country's rulebook. Entitlements
+  are where households lose the most money, and every country has its own -
+  but the rules do not go in here. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Accessibility and clarity fixes.** This gets read by families, sometimes
   by children, sometimes by people using a screen reader.
 

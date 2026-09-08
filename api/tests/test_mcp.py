@@ -113,7 +113,6 @@ def test_the_expected_tools_are_exposed():
         "get_spending_breakdown",
         "get_loans",
         "get_income",
-        "get_entitlements",
         "get_uncategorised",
         "get_spending_over_time",
         "get_notes",
@@ -253,10 +252,18 @@ def test_gaps_include_poor_categorisation():
     assert any("categorised" in g for g in mcp_server.describe_data_gaps()["gaps"])
 
 
-def test_entitlements_always_carry_their_warning():
-    """This estimate has already caused a wrong recommendation once."""
-    result = mcp_server.get_entitlements()
-    assert "authoritative" in result["warning"].lower()
+def test_the_server_tells_agents_it_holds_no_tax_rules():
+    """
+    The estimate this replaced caused a wrong recommendation once.
+
+    A model asked "are we owed anything?" will answer from its own training if
+    the server does not say otherwise, and a confident wrong figure about a
+    benefit is the most expensive mistake this project can make. So the
+    instructions have to say plainly that the tool cannot know.
+    """
+    instructions = mcp_server.server.instructions.lower()
+    assert "no tax or benefit rules" in instructions
+    assert "tax office" in instructions
 
 
 # ---------------------------------------------------------------------------

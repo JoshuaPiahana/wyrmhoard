@@ -31,7 +31,6 @@
     <button role="tab" data-tab="overview"     aria-selected="true">Overview</button>
     <button role="tab" data-tab="spending"     aria-selected="false">Spending</button>
     <button role="tab" data-tab="repeats"      aria-selected="false">Repeats</button>
-    <button role="tab" data-tab="entitlements" aria-selected="false">Entitlements</button>
     <button role="tab" data-tab="notes"        aria-selected="false">Notes</button>
     <button role="tab" data-tab="data"         aria-selected="false">Data</button>
   </nav>
@@ -202,50 +201,7 @@
       </div>
     </section>
   </div>
-
-  <!-- ================= ENTITLEMENTS ================= -->
-  <div class="panel" data-panel="entitlements" hidden>
-    <section>
-      <div id="ent-banner"></div>
-      <div class="grid g2">
-        <div class="stat">
-          <div class="v" data-bind="entitlements.estimate.received_annualised" data-format="money">—</div>
-          <div class="k">Actually received in the last year, from your bank data</div>
-        </div>
-        <div class="stat">
-          <div class="v" data-bind="entitlements.estimate.total_estimate_annual" data-format="money">—</div>
-          <div class="k">Rough estimate for a household of this shape</div>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <div class="card">
-        <h3>How the estimate breaks down</h3>
-        <div class="tablewrap">
-          <table>
-            <tbody data-list="entbreakdown"></tbody>
-          </table>
-        </div>
-        <p class="muted" style="margin-top:14px" data-bind="entitlements.estimate.calculator_url" data-format="link"></p>
-      </div>
-    </section>
-
-    <section>
-      <div class="section-head">
-        <h2>Also worth checking</h2>
-        <span class="hint">These depend on things the tool can't see, so they're prompts rather than calculations.</span>
-      </div>
-      <div class="card tablewrap" tabindex="0">
-        <table>
-          <thead><tr><th>Support</th><th>Who it's for</th><th></th></tr></thead>
-          <tbody data-list="checklist"></tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-
-  <!-- ================= PROGRESS ================= -->
+  <!-- ================= NOTES ================= -->
   <div class="panel" data-panel="notes" hidden>
     <section>
       <div class="section-head">

@@ -17,7 +17,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from wyrmhoard import config, db, facts
-from wyrmhoard.analysis import entitlements
 
 
 def set_household(monkeypatch, raw: dict) -> None:
@@ -81,22 +80,25 @@ def test_saying_yes_without_dates_still_counts_but_says_dates_are_needed(monkeyp
 # ---------------------------------------------------------------------------
 # The behaviour this exists for
 # ---------------------------------------------------------------------------
-def test_a_childless_household_is_told_the_credit_does_not_apply(monkeypatch):
-    """No nagging a couple about a credit for children they do not have."""
-    set_household(monkeypatch, {"household": {"country": "NZ", "has_children": False}})
-    result = entitlements.estimate()
-    assert result["available"] is False
-    assert result["applicable"] is False
-    assert "does not apply" in result["reason"]
+def test_a_household_that_said_no_is_not_asked_again(monkeypatch):
+    """No nagging a couple about children they have said they do not have."""
+    set_household(monkeypatch, {"household": {"has_children": False}})
+    assert facts.has_children()["value"] is False
+    assert "has_children" not in {f["fact"] for f in facts.unknown()}
 
 
 def test_a_silent_household_is_asked_rather_than_assumed_childless(monkeypatch):
-    """The expensive failure: a family that never hears about the credit."""
-    set_household(monkeypatch, {"household": {"country": "NZ"}})
-    result = entitlements.estimate()
-    assert result["available"] is False
-    assert result["applicable"] is True
-    assert "household.yml" in result["reason"]
+    """
+    The expensive failure: a family that never gets asked.
+
+    Silence is not a no. Whatever reads this - a jurisdiction pack checking a
+    credit for children, or a person - has to be able to tell "they said no"
+    from "nobody asked", because assuming the first is how a household never
+    hears about money they are owed.
+    """
+    set_household(monkeypatch, {"household": {}})
+    assert facts.has_children()["value"] is None
+    assert "has_children" in {f["fact"] for f in facts.unknown()}
 
 
 # ---------------------------------------------------------------------------

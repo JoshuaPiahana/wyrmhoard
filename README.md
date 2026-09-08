@@ -59,11 +59,13 @@ appear.
   hardest against Kiwibank (New Zealand). If yours misreads, the tool tells
   you rather than importing nonsense — and [it is a bug worth
   reporting](CONTRIBUTING.md).
-- **Entitlements are New Zealand only.** The module that checks whether you
-  are claiming everything you are owed currently understands NZ rules only.
-  Set `country:` to anything else and that one page switches itself off; every
-  other part works normally. [Adding your country](CONTRIBUTING.md) is very
-  welcome.
+- **It holds no country's tax or benefit rules.** It will tell you exactly
+  what arrived from a government agency and when, because that is in your bank
+  data. It will not tell you what you are entitled to, because that is a
+  rulebook that changes on somebody else's calendar and being confidently
+  wrong about it is worse than saying nothing. A jurisdiction pack reading
+  this tool's output is the place for that. See
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -213,11 +215,11 @@ wrong number is worse than an admitted gap.
   so — that gap is itself a finding.
 - **Import confidence is reported per file.** The parser tells you what it
   decided about your CSV's layout.
-- **Entitlement figures are estimates.** The tool compares what actually
-  landed in your account against what a household of your shape would
-  normally receive. The observed half is certain. The expected half depends on
-  rate constants in `config/nz_rates.yml` that ship **unverified** and are
-  labelled as such until you check them against the official source.
+- **What arrived is certain; what you are owed is not this tool's to say.**
+  It reports exactly what landed from any source and when. It holds no rate
+  tables for any country, so it never estimates an entitlement - a figure that
+  looks authoritative and is a year out of date is how somebody rings their tax
+  office about money they already receive.
 - **This is not financial advice.** It is arithmetic on your own bank data,
   plus prompts to go and check things with the organisations that hold the
   answers. It does not recommend investments or products, and it never will.
@@ -252,14 +254,13 @@ Full detail, including the threat model and what is **not** protected, is in
 config/
   household.yml     your household's facts (gitignored — copy the example)
   rules.yml         merchant → category rules, and your own spending groups
-  nz_rates.yml      entitlement constants, and whether they are verified
 data/
   inbox/            drop bank CSV exports here
   ledger.db         SQLite — your whole history in one backup-able file
 api/wyrmhoard/
   ingest/           format-sniffing CSV parser
   categorise.py     memo → category
-  analysis/         cash flow, recurring payments, debt payoff, entitlements
+  analysis/         cash flow, category series over time, recurring, debt payoff
   api.py            FastAPI — thin endpoints over the analysis
 web/src/            dashboard — no build step, no framework
 e2e/                browser tests
@@ -343,7 +344,7 @@ prefers that.
 
 The tool is useful with zero input and gets more useful with each detail you
 choose to add — bank CSV unlocks cash flow, household basics unlock goals, a
-payslip sharpens the entitlement maths, mortgage details unlock payoff
+a payslip states your income exactly, mortgage details unlock payoff
 scenarios. Nothing is ever required, and the plan is for the app to tell you
 what each next step is *worth* before you spend the effort.
 
@@ -352,8 +353,8 @@ deliberately will not do.
 
 ## Contributing
 
-Bank formats, merchant rules for your region, and entitlement modules for
-other countries are the most valuable things anyone could add. See
+Bank formats, merchant rules for your region, and jurisdiction packs that read
+this tool's output are the most valuable things anyone could add. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Never commit financial data** — use the synthetic generator in

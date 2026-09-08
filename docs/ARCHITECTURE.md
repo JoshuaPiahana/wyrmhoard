@@ -193,7 +193,7 @@ Written down so the gap is visible rather than discovered.
 | `trend().direction` / `.driver` | The numbers are facts; `improving` is a verdict | Consumer |
 | `income.from_payslips().notes` | A list of written advice | Consumer |
 | ~~The `snapshots` table, `POST /snapshots`, `./hoard snapshot`~~ | **Done.** Removed once `GET /series` could answer for any date range. The note survived as `notes`, which appends — the old table keyed on the day it was taken and used `INSERT OR REPLACE`, so a second entry the same day destroyed the first | |
-| Tax year, KiwiSaver vocabulary, IRD redaction, NZ account formats | 115 NZ occurrences across 19 files | NZ pack |
+| ~~`entitlements.py`, `nz_rates.yml`, the `country` gate~~ | **Done.** 225 lines of rulebook and 138 of unverified rate tables removed. Payslip vocabulary and the tax-year boundary stayed on purpose — see below | |
 | Figures generally | Bare floats; currency appears once in the whole MCP surface | Rule 2 |
 
 None of this is urgent. It is the order the work should happen in, and rule 2
@@ -253,22 +253,23 @@ a question the core should answer generally — *how much arrived in category X
 over range Y* — which is the income counterpart of `GET /series`. Generalising
 the series module deletes the NZ from it rather than moving it.
 
-#### The work, in order
+#### The work, done
 
-1. **Extend `analysis/series.py` to income.** It answers spending per category
-   per period; the same function answering money *in* subsumes
-   `observed_support()` and `observed_income()` with no scheme name in either.
-2. **Delete the policy half.** `estimate()`, `checklist()`, `nz_rates.yml`,
-   `config.Rates`, `Household.region_supported`, and the `country` gate.
-   Remove `GET /entitlements`, the `get_entitlements` MCP tool, and the
-   dashboard's Entitlements tab. Drop "rate constants nobody has verified"
-   from `describe_data_gaps`; keep "accounts money arrives from that were
-   never imported", which is the half that has actually found something.
-3. **Add the guard.** `test_no_jurisdiction.py`, on the AST like
-   `test_taxonomy.py`. It bans **scheme names and rate constants** in core
-   modules — `working_for_families`, `best_start`, `rates_rebate` — and
-   deliberately does *not* ban payslip field names, because that is the line
-   this section exists to draw.
+1. **`analysis/series.py` answers both directions.** `received()` is
+   `spending()` with the sign flipped, and it subsumes `observed_support()` and
+   `observed_income()` with no scheme name in either. `GET /series?direction=in`
+   and the `get_income_over_time` MCP tool expose it.
+2. **The policy half is gone.** `estimate()`, `checklist()`, `nz_rates.yml`,
+   `config.Rates`, `region_supported`, the `country` property, `GET
+   /entitlements`, the `get_entitlements` MCP tool and the dashboard's
+   Entitlements tab — five tabs now. `describe_data_gaps` lost "rate constants
+   nobody has verified" and kept "accounts money arrives from that were never
+   imported", which is the half that has actually found something.
+3. **`test_no_jurisdiction.py` holds the line.** On the AST, like
+   `test_taxonomy.py`. It bans scheme names and rate-table names in core
+   modules, and asserts in a test of its own that payslip vocabulary stays
+   allowed — so a future contributor "tightening" it until `kiwisaver_ee` is
+   banned gets a failure explaining why that is a different kind of thing.
 
 #### The pack itself is not this work
 

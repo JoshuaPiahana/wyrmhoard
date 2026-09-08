@@ -32,7 +32,6 @@ READ_TOOLS = [
     "get_recurring_commitments",
     "get_loans",
     "get_income",
-    "get_entitlements",
     "get_uncategorised",
     "get_property",
 ]

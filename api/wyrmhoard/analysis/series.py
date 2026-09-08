@@ -1,5 +1,5 @@
 """
-Spending over time, per category, over a range the caller chooses.
+Category totals over time, in either direction, over a range the caller chooses.
 
 Everything else in this package answers "the last N complete months", which
 quietly decides three things on the caller's behalf: how long a window is,
@@ -24,6 +24,12 @@ which is the opposite of the truth. Every period is returned, carrying
 **Gaps are zeroes, not absences.** A fortnight with no fuel in it is a real
 observation about a household. Leaving the point out entirely would let a
 plotting library join the line across it and hide the fact.
+
+Money in is the same question with the sign flipped, and answering both here
+is what let a New Zealand entitlements module leave the core. That module
+asked one frozen version of it - what arrived from IRD and MSD over twelve
+months - and the scheme names were never the core's business. A jurisdiction
+pack asks the general question about whatever categories its rulebook names.
 """
 
 from __future__ import annotations
@@ -42,6 +48,10 @@ from . import cashflow
 #: unit for anyone whose money arrives every fourteen.
 PERIOD_DAYS = {"week": 7, "fortnight": 14}
 PERIODS = ("week", "fortnight", "month")
+
+#: Which way the money went. The core knows this because it is a fact about a
+#: transaction, not a judgement about it - see taxonomy.py.
+DIRECTIONS = ("out", "in")
 
 
 def _as_date(value: str | date | None) -> date | None:
@@ -164,8 +174,46 @@ def spending(
     anchor: str | date | None = None,
     df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
+    """Money out, per category, per period. See `by_category`."""
+    return by_category("out", from_, to, period, categories, anchor, df)
+
+
+def received(
+    from_: str | date | None = None,
+    to: str | date | None = None,
+    period: str = "fortnight",
+    categories: list[str] | None = None,
+    anchor: str | date | None = None,
+    df: pd.DataFrame | None = None,
+) -> dict[str, Any]:
     """
-    Spending per category, per period, across a range.
+    Money in, per category, per period. See `by_category`.
+
+    This is what replaced a New Zealand entitlements function that asked one
+    hardcoded version of the question - how much arrived from IRD and MSD over
+    twelve months. The scheme names were never the core's business. The
+    question underneath them is, and it is the same question `spending` asks
+    with the sign flipped, so a jurisdiction pack can ask it about whatever
+    categories its rulebook cares about.
+    """
+    return by_category("in", from_, to, period, categories, anchor, df)
+
+
+def by_category(
+    direction: str = "out",
+    from_: str | date | None = None,
+    to: str | date | None = None,
+    period: str = "fortnight",
+    categories: list[str] | None = None,
+    anchor: str | date | None = None,
+    df: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """
+    Category totals per period across a range, in either direction.
+
+    `direction` is `out` for money spent or `in` for money received. Both
+    exclude transfers between the household's own accounts, so neither counts
+    a shuffle between two pots as either.
 
     `from_` and `to` default to the whole ledger. Periods outside what the
     ledger actually covers, and the period currently in progress, come back
@@ -177,6 +225,8 @@ def spending(
     """
     if period not in PERIODS:
         raise ValueError(f"period must be one of {', '.join(PERIODS)}")
+    if direction not in DIRECTIONS:
+        raise ValueError(f"direction must be one of {', '.join(DIRECTIONS)}")
 
     df = cashflow.frame() if df is None else df
     currency = config.household().currency
@@ -189,6 +239,7 @@ def spending(
     empty: dict[str, Any] = {
         "available": False,
         "reason": "No transactions in the ledger yet.",
+        "direction": direction,
         "period": period,
         "anchor": chosen["anchor"],
         "anchor_source": chosen["source"],
@@ -224,7 +275,10 @@ def spending(
     ]
     index = {w["start"]: i for i, w in enumerate(windows)}
 
-    sub = df[df["is_spend"]]
+    # Spending is stored negative, so flip its sign to report a cost as a
+    # positive number. Money in is already positive.
+    sub = df[df["is_spend"]] if direction == "out" else df[df["is_income"]]
+    sign = -1.0 if direction == "out" else 1.0
     sub = sub[
         (sub["date"] >= pd.Timestamp(spans[0][0])) & (sub["date"] <= pd.Timestamp(spans[-1][1]))
     ]
@@ -235,6 +289,7 @@ def spending(
     if sub.empty:
         return {
             "available": True,
+            "direction": direction,
             "period": period,
             "anchor": chosen["anchor"],
             "anchor_source": chosen["source"],
@@ -258,7 +313,7 @@ def spending(
             slot = index.get(bucket.date().isoformat())
             if slot is None:
                 continue
-            totals[slot] = round(float(-row["sum"]), 2)
+            totals[slot] = round(float(sign * row["sum"]), 2)
             counts[slot] = int(row["count"])
         rule = rules.get(str(cat))
         complete_totals = [t for t, w in zip(totals, windows, strict=True) if w["complete"]]
@@ -282,6 +337,7 @@ def spending(
     series.sort(key=lambda s: s["total"], reverse=True)
     return {
         "available": True,
+        "direction": direction,
         "period": period,
         "anchor": chosen["anchor"],
         "anchor_source": chosen["source"],

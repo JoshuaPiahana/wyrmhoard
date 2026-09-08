@@ -68,12 +68,11 @@ Each tier works standalone. None is required for the one below it.
 |---|---|---|
 | **Nothing** | The tool explains itself and runs on synthetic data so you can judge it before trusting it | 0 min |
 | **Bank CSV** | Cash flow, categories, recurring payments, small-spending leaks, monthly trend | 5 min |
-| **Household basics** (who lives here) | Entitlement checks, and goals sized to your real essential spending | 5 min |
-| **Children's birth dates** | Entitlement checks — usually the single largest number the tool can find | 2 min |
-| **A payslip** | Verified gross income, PAYE and retirement contributions checked against what actually arrived, sharper entitlement estimates | 5 min |
+| **Household basics** (who lives here) | Goals sized to your real spending, and enough about the household for a jurisdiction pack to check what you are owed | 5 min |
+| **Children's birth dates** | The fact most entitlement rules turn on, and the one no export can supply | 2 min |
+| **A payslip** | Gross income, tax and retirement contributions stated exactly rather than inferred from deposits | 5 min |
 | **Mortgage details** | Payoff scenarios, interest-per-week, a refix reminder before the rate rolls over | 3 min |
-| **Partner or second income** | Combined-income abatement (which is what entitlement rules actually assess), household-level planning | 3 min |
-| **Tax office data** (myIR in NZ) | Reconciliation of estimated versus actual entitlements, and detection of an accruing end-of-year bill | 10 min |
+| **Partner or second income** | Household-level planning, and the combined figure most benefit rules assess against | 3 min |
 | **Balances you type in** (retirement savings, other assets and debts) | Net worth with a real trend line, not just cash flow | 5 min |
 
 ### What the app should do about this
@@ -83,8 +82,8 @@ with an honest estimate of the payoff:
 
 > **Add a payslip → 5 minutes**
 > Right now your gross income is inferred from bank deposits, which is rough.
-> A payslip would make the entitlement estimate meaningful instead of
-> indicative, and check that your deductions are correct.
+> A payslip would state it exactly instead, and check that your deductions are
+> correct.
 
 Design rules for that mechanism:
 
@@ -126,15 +125,12 @@ missing thing is *worth*.
 - **More bank formats.** The parser sniffs layouts rather than assuming one,
   but it has been tested hardest against one bank. Every format someone
   reports makes it work for more people.
-- **Entitlement modules for other countries.** The pattern is
-  `config/nz_rates.yml` plus `analysis/entitlements.py`, gated on
-  `household.country`. This is where households lose the most money, and every
-  country has its own rules.
+- **Jurisdiction packs.** A separate program per country, reading this tool's
+  API and applying its own rulebook. This is where households lose the most
+  money, and the rules change on a calendar this project does not control -
+  which is exactly why they live outside it. See
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Regional merchant rules.** `config/rules.yml` is NZ-heavy today.
-- **Rate verification helper.** The NZ constants ship unverified by design. A
-  guided flow that walks somebody through checking each one against the
-  official source — and stamps `verified: true` — would remove the biggest
-  caveat in the product.
 
 ### Experience
 

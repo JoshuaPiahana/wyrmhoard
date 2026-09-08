@@ -49,7 +49,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import __version__, accounts, categorise, config, db, facts, figures, properties, taxonomy
-from .analysis import cashflow, entitlements, income, mortgage, recurring, series
+from .analysis import cashflow, income, mortgage, recurring, series
 
 server = MCPServer(
     "wyrmhoard",
@@ -61,7 +61,7 @@ server = MCPServer(
         "states how much of the data is understood.\n\n"
         "Before drawing any conclusion, call `describe_data_gaps`. This tool "
         "knows what it cannot see - accounts that were never imported, "
-        "spending it could not categorise, tax rates nobody has verified - and "
+        "spending it could not categorise, facts nobody has answered - and "
         "reporting confidently over those holes has caused real harm here.\n\n"
         "Prefer the summary tools. `list_transactions` returns raw records "
         "including merchant names and should only be used when the user has "
@@ -73,8 +73,9 @@ server = MCPServer(
         "someone's local takeaway; you can ask, and the answer then holds "
         "every month instead of being guessed at again.\n\n"
         "This is arithmetic on a household's own records, not regulated "
-        "financial advice. Entitlement figures are estimates; the tax office "
-        "is authoritative."
+        "financial advice. It holds no tax or benefit rules for any country: "
+        "if the user asks what they are entitled to, say that this tool cannot "
+        "know, and point them at their own tax office."
     ),
 )
 
@@ -181,7 +182,6 @@ def describe_data_gaps() -> dict[str, Any]:
     """
     coverage = categorise.coverage()
     missing = accounts.likely_missing_accounts()
-    rates = config.rates()
     payslips = income.from_payslips()
 
     gaps: list[str] = []
@@ -189,7 +189,7 @@ def describe_data_gaps() -> dict[str, Any]:
         gaps.append(
             f"Account {gap['account']} is not imported, but {gap['transfers']} "
             f"transfers totalling {gap['total']:,.2f} arrived from it. Any income "
-            f"or entitlements paid into it are invisible here."
+            f"paid into it is invisible here."
         )
     if not coverage["trustworthy"]:
         gaps.append(
@@ -200,13 +200,7 @@ def describe_data_gaps() -> dict[str, Any]:
     if not payslips.get("available"):
         gaps.append(
             "No payslips imported, so gross income is inferred from bank deposits "
-            "and is approximate. Entitlement estimates are sensitive to it."
-        )
-    if rates.unverified_blocks:
-        gaps.append(
-            "Tax and entitlement rate constants have not been checked against the "
-            f"official source ({', '.join(rates.unverified_blocks)}). Any figure "
-            "derived from them is a rough signal only."
+            "and is approximate."
         )
 
     # Facts about the people, which no export can supply. Listed as questions
@@ -313,6 +307,48 @@ def get_spending_over_time(
 
 
 @server.tool()
+def get_income_over_time(
+    from_date: str | None = None,
+    to_date: str | None = None,
+    period: str = "fortnight",
+    categories: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Money received per category, per period, across a date range.
+
+    The same shape as `get_spending_over_time` with the sign flipped. Use it
+    for "how much did we actually get from X", where X is any income category
+    the household's rules define - wages, a government payment, gifts, a
+    refund. `get_taxonomy` lists them.
+
+    Transfers between the household's own accounts are excluded, so money
+    shuffled between two of their pots is not counted as income.
+
+    This tool holds no rules about any country's benefits or tax credits, and
+    cannot tell anyone what they are entitled to. What it can do is state
+    exactly what arrived and when, which is the certain half of that question -
+    and a household seeing nothing at all arrive from an agency they expected
+    to hear from is a finding worth raising, carefully. The tax office is the
+    only authority on the other half.
+
+    Read `describe_data_gaps` first. Money arriving in an account that was
+    never imported is invisible here, and reporting "nothing received" over
+    that hole has misled a household before.
+
+    Args:
+        from_date: ISO date to start at. Defaults to the start of the ledger.
+        to_date: ISO date to end at. Defaults to the end of the ledger.
+        period: week | fortnight | month.
+        categories: category keys to include. Defaults to all of them.
+    """
+    try:
+        payload = series.received(from_=from_date, to=to_date, period=period, categories=categories)
+    except ValueError as exc:
+        return {"error": str(exc), "allowed_periods": list(series.PERIODS)}
+    return _described(payload)
+
+
+@server.tool()
 def get_recurring_commitments() -> dict[str, Any]:
     """
     Payments that repeat - subscriptions, insurance, direct debits.
@@ -355,32 +391,6 @@ def get_income() -> dict[str, Any]:
     easy to miss, so `notes` explains whenever either applies.
     """
     return _described(income.from_payslips())
-
-
-@server.tool()
-def get_entitlements() -> dict[str, Any]:
-    """
-    Government support the household may be entitled to, and what it actually
-    receives.
-
-    The observed half is certain: it is read from the bank data. The expected
-    half is an ESTIMATE from locally-stored rate constants that may be a tax
-    year out of date, and it is only implemented for New Zealand.
-
-    Never present the estimate as an entitlement. If it differs from what is
-    received, the useful output is "worth checking with the tax office", not a
-    figure the household is owed.
-    """
-    return _described(
-        {
-            "estimate": entitlements.estimate(),
-            "other_support_to_check": entitlements.checklist(),
-            "warning": (
-                "Estimates only. The tax office is authoritative and its own "
-                "calculator should be used before acting on any figure here."
-            ),
-        }
-    )
 
 
 # ---------------------------------------------------------------------------
