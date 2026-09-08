@@ -226,6 +226,84 @@ so a second snapshot on the same day silently destroyed the first. `notes`
 appends and de-duplicates on a fingerprint instead, which is the same rule
 every import already follows.
 
+### Extracting the NZ pack
+
+The last item on the list, and the one most often mis-sized. "115 NZ
+occurrences across 19 files" is true and misleading, because those occurrences
+are three different kinds of thing and only one of them is a problem.
+
+| | What it is | Size | Where it goes |
+|---|---|---|---|
+| **Policy** | `entitlements.estimate()`, `checklist()`, `config/nz_rates.yml` — a rulebook, with all seven rate blocks shipping `verified: false` | 225 lines + 138 of YAML | A pack |
+| **Facts** | `observed_support()`, `observed_income()` — *"$0 arrived from IRD in twelve months"* | 86 lines | **Stays.** Arithmetic on the household's own records |
+| **Vocabulary** | `payslip.py` patterns for `kiwisaver_ee` / `paye` / `acc_levy`, `income.tax_year_bounds()` | scattered | **Stays.** See below |
+
+**Vocabulary is not jurisdiction.** A payslip parser recognising the word
+"KiwiSaver" is doing the same job as a merchant rule recognising "PAK N SAVE":
+matching local text. Every country has a retirement contribution, an
+income-tax line and a tax year; only the words and the boundary date are
+local. Renaming those fields would also be a schema migration on the
+`payslips` table, for no gain anyone can point at. Left alone deliberately.
+
+**Facts are not jurisdiction either.** The decision table at the top of this
+document already settles it: *"$0 arrived from IRD in twelve months"* is Core.
+The only NZ in it is the category key `income_ird`, which lives in `rules.yml`
+as the household's own data. Better still, that function is a special case of
+a question the core should answer generally — *how much arrived in category X
+over range Y* — which is the income counterpart of `GET /series`. Generalising
+the series module deletes the NZ from it rather than moving it.
+
+#### The work, in order
+
+1. **Extend `analysis/series.py` to income.** It answers spending per category
+   per period; the same function answering money *in* subsumes
+   `observed_support()` and `observed_income()` with no scheme name in either.
+2. **Delete the policy half.** `estimate()`, `checklist()`, `nz_rates.yml`,
+   `config.Rates`, `Household.region_supported`, and the `country` gate.
+   Remove `GET /entitlements`, the `get_entitlements` MCP tool, and the
+   dashboard's Entitlements tab. Drop "rate constants nobody has verified"
+   from `describe_data_gaps`; keep "accounts money arrives from that were
+   never imported", which is the half that has actually found something.
+3. **Add the guard.** `test_no_jurisdiction.py`, on the AST like
+   `test_taxonomy.py`. It bans **scheme names and rate constants** in core
+   modules — `working_for_families`, `best_start`, `rates_rebate` — and
+   deliberately does *not* ban payslip field names, because that is the line
+   this section exists to draw.
+
+#### The pack itself is not this work
+
+Build it when there is a reason to, and build it **in its own repository**.
+
+- **Different clock.** NZ rates change on 1 April; the core does not. Sharing
+  a repo means either cutting a core release for a tax change, or letting
+  rates go stale waiting for one.
+- **A boundary is only real when it is physical.** In-repo, `from wyrmhoard
+  import db` is one keystroke away and someone will reach for it — the same
+  argument this document already makes against a plugin system.
+- **Liability.** An entitlement estimate is the closest thing this project
+  produces to advice. Outside the core repo, "not financial advice" is a
+  cleaner claim.
+- **It is the proof.** If a pack can be written against the published API and
+  MCP surface alone, the consumer contract is real. If it cannot, that is a
+  finding about the API, and worth discovering on purpose.
+
+#### What this costs, honestly
+
+The household loses the Working for Families estimate — which on this project
+was the single largest sum the tool ever surfaced. Two things make that
+acceptable and one makes it uncomfortable.
+
+Acceptable: the figure was never trustworthy. Every rate block ships
+`verified: false`, and the tool has always labelled the number indicative and
+pointed at IRD's own calculator. And the *certain* half survives — the
+observed side is what caught family payments arriving in an account that had
+never been imported, which is the finding that mattered.
+
+Uncomfortable: "we deleted the most valuable-looking number in the product"
+is a real cost, and if the answer turns out to be that somebody wants it back
+immediately, then the pack is step one rather than step three and this
+sequence is wrong.
+
 ---
 
 ## What this costs
