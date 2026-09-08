@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import Page, expect
 
-TABS = ["overview", "spending", "repeats", "entitlements", "notes", "data"]
+TABS = ["overview", "spending", "repeats", "notes", "data"]
 
 
 # ---------------------------------------------------------------------------
@@ -106,31 +106,17 @@ def test_the_group_bar_adds_up_to_the_full_width(dashboard: Page):
     assert 99.0 <= total <= 101.0, f"Group bar segments total {total}%"
 
 
-def test_entitlements_page_always_explains_itself(dashboard: Page):
+def test_no_tab_promises_something_the_tool_cannot_do(dashboard: Page):
     """
-    The page must never be blank, in either state.
+    There was an Entitlements tab. It estimated what a New Zealand household
+    would receive, from rate tables that shipped unverified. It is gone: the
+    rules belong to a jurisdiction pack reading this tool, not to this tool.
 
-    With household details it shows an estimate, and the unverified-rates
-    caveat that stops that estimate being read as fact. Without them it must
-    say what is missing - originally it rendered an empty banner, which is how
-    a fresh install looked to anyone who had not filled in household.yml yet.
+    Asserted rather than assumed, because a tab that came back without a
+    rulebook behind it would show confident figures with nothing under them.
     """
-    dashboard.click('nav.tabs button[data-tab="entitlements"]')
-    banner = dashboard.locator("#ent-banner")
-
-    expect(banner).to_be_visible()
-    text = banner.inner_text().strip()
-    assert len(text) > 40, f"Entitlements banner is effectively empty: {text!r}"
-
-    lowered = text.lower()
-    if "$" in text:
-        # A figure is on screen, so the caveat framing it must be too.
-        assert "estimate" in lowered or "verified" in lowered, (
-            "An entitlement figure is shown without the caveat that it is an estimate"
-        )
-    else:
-        # No figure, so it must instead say what to add to get one.
-        assert "nothing to estimate" in lowered or "add" in lowered
+    labels = dashboard.locator("nav.tabs button").all_inner_texts()
+    assert not any("entitle" in label.lower() for label in labels), labels
 
 
 # ---------------------------------------------------------------------------

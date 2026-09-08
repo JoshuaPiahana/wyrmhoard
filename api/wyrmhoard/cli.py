@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import categorise, config, db, samples, taxonomy
-from .analysis import cashflow, entitlements, mortgage, recurring
+from .analysis import cashflow, mortgage, recurring
 
 app = typer.Typer(add_completion=False, help="Household finance toolkit.")
 console = Console()
@@ -188,10 +188,6 @@ def summary() -> None:
         f"Recurring commitments detected: [bold]{rec['count']}[/bold], "
         f"{_money(rec['total_monthly'])}/month ({_money(rec['total_annual'])}/year)."
     )
-
-    ent = entitlements.estimate()
-    if ent.get("headline"):
-        console.print(f"\n[bold yellow]Entitlements:[/bold yellow] {ent['headline']}")
 
 
 @app.command()

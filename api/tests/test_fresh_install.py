@@ -23,7 +23,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from wyrmhoard import cache, categorise, db
-from wyrmhoard.analysis import cashflow, entitlements, recurring
+from wyrmhoard.analysis import cashflow, recurring
 
 
 @pytest.fixture
@@ -88,9 +88,3 @@ def test_summary_is_serialisable_and_flags_that_there_is_no_data(empty_ledger):
     assert s["typical_month"]["available"] is False
     assert "reason" in s["typical_month"]
     assert s["cash"]["total"] is None
-
-
-def test_entitlements_declines_rather_than_inventing_a_number(empty_ledger):
-    result = entitlements.estimate()
-    assert result["available"] is False
-    assert "total_estimate_annual" not in result

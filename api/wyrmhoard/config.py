@@ -56,24 +56,6 @@ class Household:
     def council(self) -> str | None:
         return self.raw.get("household", {}).get("council")
 
-    @property
-    def country(self) -> str:
-        """
-        ISO-ish country code. Gates the region-specific modules.
-
-        Everything that matters - importing, categorising, cash flow,
-        recurring payments, debt payoff, the report - works anywhere. Only the
-        entitlement estimates are country-specific, and they switch themselves
-        off rather than quietly showing a household in Ontario what a New
-        Zealand family would receive.
-        """
-        return str(self.raw.get("household", {}).get("country", "NZ")).upper()
-
-    @property
-    def region_supported(self) -> bool:
-        """True when this country has an entitlements module."""
-        return self.country in {"NZ"}
-
     # -- people ------------------------------------------------------------
     @property
     def people(self) -> list[Person]:
@@ -111,9 +93,9 @@ class Household:
         Renters, and owners who have finished paying, are first-class here.
 
         A missing or zero balance means no mortgage - which is different from
-        a mortgage whose details have not been filled in yet, and the coach
-        needs to tell those apart so it does not nag a renter about a loan
-        they do not have.
+        a mortgage whose details have not been filled in yet. Anything reading
+        this needs to tell those apart, so it does not raise a loan with a
+        renter who does not have one.
         """
         balance = self.mortgage.get("balance")
         return balance is not None and float(balance) > 0
@@ -190,41 +172,6 @@ class Household:
         return bool(self.raw)
 
 
-@dataclass
-class Rates:
-    """NZ entitlement constants, plus honesty about whether they are current."""
-
-    raw: dict[str, Any] = field(default_factory=dict)
-
-    def block(self, name: str) -> dict[str, Any]:
-        return self.raw.get(name, {}) or {}
-
-    def is_verified(self, name: str) -> bool:
-        return bool(self.block(name).get("verified", False))
-
-    @property
-    def any_unverified(self) -> bool:
-        blocks = [
-            "working_for_families",
-            "best_start",
-            "kiwisaver",
-            "rates_rebate",
-            "paye",
-        ]
-        return any(not self.is_verified(b) for b in blocks)
-
-    @property
-    def unverified_blocks(self) -> list[str]:
-        blocks = [
-            "working_for_families",
-            "best_start",
-            "kiwisaver",
-            "rates_rebate",
-            "paye",
-        ]
-        return [b for b in blocks if not self.is_verified(b)]
-
-
 @lru_cache(maxsize=1)
 def household() -> Household:
     """The real household file, falling back to the example so the app boots."""
@@ -259,7 +206,7 @@ def declared_categories() -> dict[str, str]:
     view includes learned.yml, so validating against it would let one invented
     category authorise the next: a typo written once would then be a category
     forever, and the spending filed under it would sit outside every group the
-    coaching maths knows about.
+    household declared.
 
     Uncached on purpose. It is read when a rule is being taught, which is rare,
     and an uncached read cannot go stale against a file somebody just edited.
@@ -270,18 +217,13 @@ def declared_categories() -> dict[str, str]:
     }
 
 
-@lru_cache(maxsize=1)
-def rates() -> Rates:
-    return Rates(_load_yaml(CONFIG_DIR / "nz_rates.yml"))
-
-
 def reload() -> None:
     """
     Drop cached config so edits on the host take effect without a restart.
 
     This also clears the analysis caches. Those key on the ledger file, but
-    every one of them reads config too - entitlement rates, the household's
-    country, the small-transaction threshold - so a config-only change would
+    every one of them reads config too - the grouping vocabulary, the
+    small-transaction threshold - so a config-only change would
     otherwise serve results computed under the old settings. Enforcing it here
     rather than at each call site means the invariant holds for the CLI, the
     tests and any future caller, not just the /reload endpoint.
@@ -290,7 +232,6 @@ def reload() -> None:
     """
     household.cache_clear()
     rules.cache_clear()
-    rates.cache_clear()
 
     from . import cache as _cache
     from . import taxonomy as _taxonomy

@@ -7,7 +7,7 @@
 
    The contract with the markup is small:
      [data-bind="path.into.state"]  — filled with a formatted scalar
-     [data-format="money|money2|pct|weeks|int|date|text|link"]
+     [data-format="money|money2|pct|weeks|int|date|text"]
      [data-list="name"]             — a renderer fills this container
    ========================================================================== */
 
@@ -44,7 +44,6 @@ const FORMATTERS = {
   date:   v => (v ? new Date(v).toLocaleDateString('en-NZ',
                   { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
   text:   v => (v === null || v === undefined || v === '' ? '—' : String(v)),
-  link:   v => v || '',
 };
 
 function pick(path, root = state) {
@@ -56,12 +55,6 @@ function applyBindings() {
   $$('[data-bind]').forEach(el => {
     const raw = pick(el.dataset.bind);
     const fmt = FORMATTERS[el.dataset.format || 'text'] || FORMATTERS.text;
-    if (el.dataset.format === 'link') {
-      el.innerHTML = raw
-        ? `IRD's own calculator is the authority: <a href="${esc(raw)}" target="_blank" rel="noopener">${esc(raw)}</a>`
-        : '';
-      return;
-    }
     el.textContent = fmt(raw);
     // Colour the headline numbers by sign, but only where it carries meaning.
     if (el.classList.contains('v') && typeof raw === 'number' &&
@@ -281,32 +274,6 @@ const RENDER = {
       </tr>`).join('');
   },
 
-  entbreakdown: el => {
-    const e = state.entitlements?.estimate;
-    if (!e?.available) {
-      el.innerHTML = `<tr><td class="muted">${esc(e?.reason || 'Not enough information yet.')}</td></tr>`;
-      return;
-    }
-    const rows = [
-      ['Family Tax Credit',   e.family_tax_credit_annual],
-      ['In-Work Tax Credit',  e.in_work_tax_credit_annual],
-      ['Less abatement',      e.abatement_applied ? -e.abatement_applied : 0],
-      ['Best Start',          e.best_start_estimate],
-    ];
-    el.innerHTML = rows.map(([k, v]) =>
-      `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('') +
-      `<tr><td><b>Estimated total</b></td><td class="n"><b>${money(e.total_estimate_annual)}</b></td></tr>`;
-  },
-
-  checklist: el => {
-    const rows = state.entitlements?.checklist || [];
-    el.innerHTML = rows.map(i => `
-      <tr>
-        <td><b>${esc(i.name)}</b></td>
-        <td>${esc(i.applies_to)}</td>
-        <td>${i.source ? `<a href="${esc(i.source)}" target="_blank" rel="noopener">Check →</a>` : ''}</td>
-      </tr>`).join('');
-  },
 
   notes: el => {
     const rows = state.notes || [];
@@ -567,7 +534,7 @@ const RENDER = {
       ).join('');
 
       // Settled by the people listed in household.yml, which is richer than a
-      // yes/no and is what the entitlement maths actually reads. Offering a
+      // yes/no and is what anything reading this actually gets. Offering a
       // dropdown here would be a control that silently does nothing, so say
       // where the answer comes from instead.
       if (f.source === 'people') {
@@ -724,49 +691,23 @@ function renderBanners() {
 
   $('#banners').innerHTML = out.join('');
 
-  const e = state.entitlements?.estimate;
-  const banner = $('#ent-banner');
-  if (!banner) return;
-
-  if (e?.headline) {
-    const tone = e.severity === 'high' ? 'bad' : (e.severity === 'medium' ? 'warn' : 'info');
-    banner.innerHTML = `<div class="note ${tone}"><b>${esc(e.headline)}</b></div>` +
-      (e.rates_verified ? '' :
-        `<div class="note warn">The NZ rate constants in <code>config/nz_rates.yml</code>
-         have not been verified for this tax year, so the estimate is a rough signal only.
-         Verifying them takes about ten minutes and makes this page trustworthy.</div>`);
-  } else {
-    // The page must never be silently blank. Somebody who has not filled in
-    // their household yet should be told what to add and what it buys them,
-    // rather than being left looking at an empty tab wondering if it broke.
-    const reason = e?.reason
-      || 'Add your household details to see whether you are claiming everything you are entitled to.';
-    const next = e?.how_to_add
-      || 'Add each child (with a birth date) under <code>people:</code> in '
-         + '<code>config/household.yml</code>, then press "Reload config" on the Data tab. '
-         + 'Entitlements are usually the largest single number this tool can find, so it '
-         + 'is worth the two minutes.';
-    banner.innerHTML =
-      `<div class="note info"><b>Nothing to estimate yet.</b> ${esc(reason)}</div>` +
-      `<div class="note info">${next}</div>`;
-  }
 }
 
 /* ---------- data ------------------------------------------------------- */
 
 async function refresh() {
-  const [setup, summary, recurring, entitlements, mortgage,
+  const [setup, summary, recurring, mortgage,
          notes, unknowns, rules, accounts, loans, imports, backups,
          payslipData, household, taxonomy] = await Promise.all([
     api('/setup'), api('/summary'), api('/recurring'),
-    api('/entitlements'), api('/mortgage'), api('/notes'),
+    api('/mortgage'), api('/notes'),
     api('/uncategorised?limit=25'), api('/rules'), api('/accounts'), api('/loans'),
     api('/imports'), api('/backups'), api('/payslips'), api('/household'),
     api('/taxonomy'),
   ]);
 
   Object.assign(state, {
-    setup, summary, recurring, entitlements, mortgage, notes, unknowns,
+    setup, summary, recurring, mortgage, notes, unknowns,
     accounts, loans, imports, taxonomy,
     payslips: payslipData.payslips,
     income: payslipData.income,

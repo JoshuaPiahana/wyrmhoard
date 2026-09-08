@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import __version__, accounts, cache, categorise, config, db, facts, properties, taxonomy
-from .analysis import cashflow, entitlements, mortgage, recurring, series
+from .analysis import cashflow, mortgage, recurring, series
 from .ingest import ingest_document, parse_csv, resolve_within, safe_upload_name
 
 
@@ -63,7 +63,6 @@ def health() -> dict[str, Any]:
 def setup_state() -> dict[str, Any]:
     """What the household still needs to do before the numbers mean anything."""
     hh = config.household()
-    rt = config.rates()
     stats = db.stats()
     cov = categorise.coverage()
     real_config = (config.CONFIG_DIR / "household.yml").exists()
@@ -74,7 +73,7 @@ def setup_state() -> dict[str, Any]:
             {
                 "id": "household",
                 "label": "Create config/household.yml from the example",
-                "why": "Ages, mortgage and income drive the entitlement and payoff maths.",
+                "why": "Ages, mortgage and income drive the payoff maths and anything reading this.",
             }
         )
     if not stats["transactions"]:
@@ -117,25 +116,15 @@ def setup_state() -> dict[str, Any]:
                 "id": "missing_account",
                 "label": f"Import {gap['account']} — {gap['transfers']} transfers in, "
                 f"${gap['total']:,.0f}",
-                "why": "Money arrives regularly from this account, so income and "
-                "entitlement figures are only part of the picture until it is included.",
+                "why": "Money arrives regularly from this account, so income "
+                "figures are only part of the picture until it is included.",
             }
         )
-    if rt.unverified_blocks:
-        todo.append(
-            {
-                "id": "rates",
-                "label": f"Verify NZ rates ({', '.join(rt.unverified_blocks)})",
-                "why": "Entitlement figures stay labelled as rough estimates until checked against IRD.",
-            }
-        )
-
     return {
         "household_configured": real_config,
         "household_name": hh.name,
         "transactions": stats["transactions"],
         "coverage": cov,
-        "rates_verified": not rt.any_unverified,
         "todo": todo,
         "ready": bool(stats["transactions"]) and cov["trustworthy"],
     }
@@ -164,10 +153,14 @@ def spending_series(
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
     period: str = "fortnight",
+    direction: str = "out",
     category: list[str] | None = Query(None),
 ) -> dict[str, Any]:
     """
-    Spending per category, per period, across a date range.
+    Category totals per period across a date range.
+
+    `direction` is `out` for money spent or `in` for money received. Both
+    exclude movements between the household's own accounts.
 
     `period` is `week`, `fortnight` or `month`. Fortnights align to the
     household's pay day where one is known — a household paid every second
@@ -179,7 +172,9 @@ def spending_series(
     reads as "we spent nothing" over a gap in the data.
     """
     try:
-        return series.spending(from_=from_, to=to, period=period, categories=category)
+        return series.by_category(
+            direction=direction, from_=from_, to=to, period=period, categories=category
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -200,14 +195,6 @@ def taxonomy_declaration() -> dict[str, Any]:
 @app.get("/recurring")
 def recurring_payments() -> dict[str, Any]:
     return recurring.summary()
-
-
-@app.get("/entitlements")
-def entitlement_estimate() -> dict[str, Any]:
-    return {
-        "estimate": entitlements.estimate(),
-        "checklist": entitlements.checklist(),
-    }
 
 
 @app.get("/mortgage")

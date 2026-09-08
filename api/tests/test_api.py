@@ -58,7 +58,7 @@ def private_config(tmp_path, monkeypatch):
     """
     private = tmp_path / "config"
     private.mkdir()
-    for name in ("rules.yml", "nz_rates.yml"):
+    for name in ("rules.yml",):
         source = config.CONFIG_DIR / name
         if source.exists():
             shutil.copy(source, private / name)
@@ -92,7 +92,6 @@ def test_health(client):
         "/monthly",
         "/categories",
         "/recurring",
-        "/entitlements",
         "/mortgage",
         "/household",
         "/transactions",

@@ -24,7 +24,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from wyrmhoard import config
-from wyrmhoard.analysis import entitlements, mortgage
+from wyrmhoard.analysis import mortgage
 
 
 def write_household(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data: dict) -> None:
@@ -32,12 +32,6 @@ def write_household(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data: dict)
     cfg = tmp_path / "config"
     cfg.mkdir(exist_ok=True)
     (cfg / "household.yml").write_text(yaml.safe_dump(data), encoding="utf-8")
-
-    # nz_rates.yml is read by the entitlements module; copy the real one so we
-    # are testing our logic rather than an empty file.
-    real_rates = Path(__file__).resolve().parents[2] / "config" / "nz_rates.yml"
-    if real_rates.exists():
-        (cfg / "nz_rates.yml").write_text(real_rates.read_text(encoding="utf-8"), encoding="utf-8")
 
     monkeypatch.setattr(config, "CONFIG_DIR", cfg)
     config.reload()
@@ -117,19 +111,10 @@ def test_homeowner_with_mortgage_still_gets_the_maths(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Household composition
 # ---------------------------------------------------------------------------
-def test_no_children_means_no_entitlement_estimate(tmp_path, monkeypatch):
-    write_household(
-        tmp_path,
-        monkeypatch,
-        {"household": {"country": "NZ"}, "people": [{"name": "A", "role": "earner"}]},
-    )
-    result = entitlements.estimate()
-    assert result["available"] is False
-    assert "children" in result["reason"].lower()
 
 
 def test_two_earners_are_summed_for_income(tmp_path, monkeypatch):
-    """Entitlement abatement uses combined household income, not one salary."""
+    """Two incomes are one household income. Anything reading this needs both."""
     write_household(
         tmp_path,
         monkeypatch,
@@ -155,35 +140,3 @@ def test_single_earner_primary_shape_still_works(tmp_path, monkeypatch):
     hh = config.household()
     assert len(hh.earners) == 1
     assert hh.gross_income_declared == 55000
-
-
-# ---------------------------------------------------------------------------
-# Outside New Zealand
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("country", ["AU", "GB", "US", "CA"])
-def test_non_nz_disables_entitlements_cleanly(tmp_path, monkeypatch, country):
-    """
-    Showing an Australian household what a NZ family would receive would be
-    worse than showing nothing. The module must decline, and say why.
-    """
-    write_household(
-        tmp_path,
-        monkeypatch,
-        {
-            "household": {"country": country},
-            "people": [{"name": "Kid", "role": "child", "birth_year": 2020}],
-        },
-    )
-    result = entitlements.estimate()
-
-    assert result["available"] is False
-    assert result["unsupported_country"] == country
-    assert "New Zealand" in result["reason"]
-    # It must not leak a number that somebody could mistake for their own.
-    assert "total_estimate_annual" not in result
-
-
-def test_country_defaults_to_nz_and_is_case_insensitive(tmp_path, monkeypatch):
-    write_household(tmp_path, monkeypatch, {"household": {"country": "nz"}})
-    assert config.household().country == "NZ"
-    assert config.household().region_supported is True
