@@ -34,6 +34,16 @@ before.
   `docs/PRODUCERS.md`.
 - **Not regulated financial advice.** Arithmetic on a household's own records,
   plus prompts to check official sources.
+- **The core holds no country's tax or benefit rules.** Payslip vocabulary and
+  merchant patterns are fine - they are local text, not a rulebook.
+  `api/tests/test_no_jurisdiction.py` draws that line.
+- **Never weaken `main`'s branch protection to get something merged.** It is
+  deliberately strict: eleven required checks, a pull request, no bypass for
+  admins, and unresolved review comments block the merge. That last one means
+  a CodeQL nit can stop a merge, which is the intended behaviour and was
+  chosen knowing it. If a merge is blocked, fix the thing or ask - do not turn
+  the setting off. Three separate defects reached a green `./hoard check` and
+  were caught only here.
 
 ## How we work
 
