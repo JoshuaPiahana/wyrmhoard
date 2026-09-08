@@ -239,6 +239,7 @@ jobs:
           ./hoard sample
           ./hoard ingest --sample
           ./hoard summary
-          ./hoard report
-          test -f reports/latest.html || { echo "No report produced"; exit 1; }
+          ./hoard note "quickstart check"
+          ./hoard notes | grep -q "quickstart check" \
+            || { echo "The note did not come back"; exit 1; }
           echo "Quickstart completed on a clean checkout."

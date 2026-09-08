@@ -79,7 +79,7 @@ case "$cmd" in
   shell)    docker compose run --rm --no-deps api bash ;;
 
   # Everything else is a CLI subcommand.
-  ingest|sample|summary|review|recategorise|snapshot|loan|init|reset)
+  ingest|sample|summary|review|recategorise|note|notes|loan|init|reset)
             run "$cmd" "$@" ;;
 
   help|--help|-h)
@@ -96,7 +96,8 @@ Wyrmhoard - household finance
   ./hoard review             biggest uncategorised spending
   ./hoard recategorise       re-apply rules after editing config/rules.yml
   ./hoard summary            headline numbers in the terminal
-  ./hoard snapshot           freeze this month's numbers for progress tracking
+  ./hoard note "..."         write down what happened this month
+  ./hoard notes              what you have said about past months
   ./hoard loan               mortgage payoff scenarios
 
   ./hoard lint               static analysis: data guard, ruff, mypy
