@@ -169,3 +169,46 @@ def test_the_playwright_package_matches_the_image_that_ships_its_browsers():
         "The image carries the browser binaries for its own version, so both "
         "have to move together or the browser tests break on startup."
     )
+
+
+def test_ci_checks_every_core_module_installs_standalone():
+    """
+    The list in CI must match the modules that exist.
+
+    `core-standalone` proves the analysis engine imports with no web, agent or
+    CLI package present. It does that by naming every core module in the
+    workflow, which is a hand-maintained list, and a hand-maintained list of
+    module names drifts the moment somebody deletes one.
+
+    It has now drifted twice. Removing coach.py and report.py left CI importing
+    them; removing entitlements.py left CI importing that. Neither is reachable
+    from `./hoard check`, so both got as far as a red build.
+
+    Checking both directions matters. A name CI imports that no longer exists
+    fails the build for the wrong reason. A core module CI does *not* import is
+    worse and quieter: it means nobody has ever proved that module installs
+    without an interface, which is the whole premise of the packaging split.
+    """
+    candidates = [Path(__file__).resolve().parents[2], Path("/repo"), Path.cwd()]
+    root = next((c for c in candidates if (c / ".github").is_dir()), None)
+    if root is None:
+        pytest.skip("repo root not reachable from here; this guard runs in CI")
+
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    listed = {
+        name
+        for name in re.findall(r'"(wyrmhoard\.[a-z_.]+)"', workflow)
+        if name.rsplit(".", 1)[-1] not in INTERFACES
+    }
+
+    actual = {
+        "wyrmhoard." + path.relative_to(PACKAGE).with_suffix("").as_posix().replace("/", ".")
+        for path in core_modules()
+        if path.stem != "__init__"
+    }
+
+    assert listed == actual, (
+        "the core-standalone job in ci.yml is out of step with the package.\n"
+        f"  imports a module that does not exist: {sorted(listed - actual) or 'none'}\n"
+        f"  never proves these install alone:      {sorted(actual - listed) or 'none'}"
+    )

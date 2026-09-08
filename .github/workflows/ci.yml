@@ -203,13 +203,13 @@ jobs:
               "wyrmhoard.taxonomy",
               "wyrmhoard.samples",
               "wyrmhoard.ingest.bank_csv",
+              "wyrmhoard.ingest.paths",
               "wyrmhoard.ingest.payslip",
               "wyrmhoard.analysis.cashflow",
               "wyrmhoard.analysis.income",
               "wyrmhoard.analysis.mortgage",
               "wyrmhoard.analysis.recurring",
               "wyrmhoard.analysis.series",
-              "wyrmhoard.analysis.entitlements",
           ):
               importlib.import_module(module)
 
