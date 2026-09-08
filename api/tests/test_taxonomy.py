@@ -80,10 +80,10 @@ def _core_modules() -> list[Path]:
         Path.cwd() / "api" / "wyrmhoard",
         Path(__file__).resolve().parents[1] / "wyrmhoard",
     ]
-    for root in candidates:
-        if root.is_dir():
-            return sorted(root.rglob("*.py"))
-    pytest.skip("Cannot locate the wyrmhoard package from this working directory.")
+    root = next((c for c in candidates if c.is_dir()), None)
+    if root is None:
+        pytest.skip("Cannot locate the wyrmhoard package from this working directory.")
+    return sorted(root.rglob("*.py"))
 
 
 @pytest.fixture
