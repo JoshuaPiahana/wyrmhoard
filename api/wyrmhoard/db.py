@@ -192,6 +192,78 @@ CREATE TABLE IF NOT EXISTS property_loans (
     decided_at  TEXT NOT NULL,
     PRIMARY KEY (property_id, account)
 );
+
+-- A document that itemises a transaction: a supermarket receipt, a fuel
+-- docket, an itemised bill. The bank says $315.73 left the account; the
+-- document says what it bought.
+--
+-- The core does not parse these. A producer reads whatever format its source
+-- emits and submits the result, because a retailer changes their layout on
+-- their own schedule and a parser in here would mean a release every time they
+-- redesign a receipt. What the core does is define the shape, check it, and
+-- refuse what does not fit. See docs/PRODUCERS.md.
+CREATE TABLE IF NOT EXISTS documents (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind         TEXT NOT NULL,             -- receipt | invoice | statement
+    merchant     TEXT NOT NULL,
+    reference    TEXT,                      -- the document's own number
+    observed_at  TEXT NOT NULL,             -- the day it is ABOUT
+    received_at  TEXT NOT NULL,             -- when Wyrmhoard stored it
+    producer     TEXT NOT NULL,             -- human:… | agent:… | tool:…
+    source       TEXT,
+    confidence   TEXT,
+    stated_total REAL NOT NULL,             -- what the document says it came to
+    currency     TEXT NOT NULL,
+    extra        TEXT,                      -- JSON: whatever only this source has
+    fingerprint  TEXT NOT NULL UNIQUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_observed ON documents(observed_at);
+
+-- The lines. Four fields are required because they are the only four that
+-- three real documents from two retailers all agreed on; everything else is
+-- present in one and missing from another.
+--
+-- `source_category` is the shop's own word for it - "Dairy & Eggs", "Deli &
+-- Chilled Foods", or nothing at all - stored verbatim and never translated on
+-- the way in. `category` is the household's, assigned afterwards and revisable,
+-- for the same reason recategorise_all() exists: a decision made at import is
+-- a decision nobody can revisit.
+CREATE TABLE IF NOT EXISTS document_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id     INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    line_no         INTEGER NOT NULL,
+    description     TEXT NOT NULL,
+    quantity        REAL NOT NULL,
+    unit            TEXT NOT NULL,          -- ea | kg | l | whatever the source says
+    unit_price      REAL,
+    line_total      REAL NOT NULL,
+    source_category TEXT,
+    category        TEXT,
+    raw             TEXT,                   -- the line as it appeared
+    extra           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_document ON document_items(document_id);
+CREATE INDEX IF NOT EXISTS idx_items_category ON document_items(category);
+
+-- Which bank transaction a document belongs to, and how sure we are.
+--
+-- Separate from `documents` because a document exists whether or not it ever
+-- matches: a loyalty-card receipt for a cash purchase never will, and neither
+-- will one from an account that was never imported. Matching on date, amount
+-- and merchant is inference, so it is recorded with its method and confidence
+-- and ambiguity is reported rather than resolved - the same way
+-- properties.summary() reports a rent-versus-owned disagreement instead of
+-- picking a side.
+CREATE TABLE IF NOT EXISTS document_links (
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    fingerprint TEXT NOT NULL,              -- the transaction
+    method      TEXT NOT NULL,              -- how the match was made
+    confidence  TEXT NOT NULL,
+    decided_at  TEXT NOT NULL,
+    PRIMARY KEY (document_id, fingerprint)
+);
 """
 
 
@@ -827,3 +899,127 @@ def stats() -> dict[str, Any]:
         "accounts": accounts,
         "files_imported": files,
     }
+
+
+# --------------------------------------------------------------------------
+# Documents that itemise a transaction
+# --------------------------------------------------------------------------
+def add_document(doc: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Store a document and its lines in one transaction.
+
+    All or nothing on purpose: a document whose header landed but whose lines
+    did not would reconcile against nothing and look like a shop where the
+    household bought air.
+    """
+    with connect() as conn:
+        existing = conn.execute(
+            "SELECT id FROM documents WHERE fingerprint = ?", (doc["fingerprint"],)
+        ).fetchone()
+        if existing:
+            return {"stored": False, "document_id": existing["id"]}
+
+        cur = conn.execute(
+            """INSERT INTO documents
+               (kind, merchant, reference, observed_at, received_at, producer,
+                source, confidence, stated_total, currency, extra, fingerprint)
+               VALUES (:kind, :merchant, :reference, :observed_at, :received_at,
+                       :producer, :source, :confidence, :stated_total, :currency,
+                       :extra, :fingerprint)""",
+            doc,
+        )
+        document_id = cur.lastrowid
+        conn.executemany(
+            """INSERT INTO document_items
+               (document_id, line_no, description, quantity, unit, unit_price,
+                line_total, source_category, category, raw, extra)
+               VALUES (?,?,?,?,?,?,?,?,NULL,?,?)""",
+            [
+                (
+                    document_id,
+                    it["line_no"],
+                    it["description"],
+                    it["quantity"],
+                    it["unit"],
+                    it["unit_price"],
+                    it["line_total"],
+                    it["source_category"],
+                    it["raw"],
+                    it["extra"],
+                )
+                for it in items
+            ],
+        )
+    return {"stored": True, "document_id": document_id}
+
+
+def documents(limit: int | None = None) -> list[dict[str, Any]]:
+    """Documents newest first, each with its line count and any link."""
+    sql = """
+        SELECT d.*,
+               (SELECT COUNT(*) FROM document_items i WHERE i.document_id = d.id) AS item_count,
+               l.fingerprint, l.confidence AS link_confidence, l.method AS link_method
+          FROM documents d
+          LEFT JOIN document_links l ON l.document_id = d.id
+         ORDER BY d.observed_at DESC, d.id DESC
+    """
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+
+
+def document(document_id: int) -> dict[str, Any] | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def document_items(document_id: int) -> list[dict[str, Any]]:
+    """
+    The lines of one document.
+
+    Its own function rather than a join in `documents()`, because product names
+    are the most revealing data here and reading them should be something a
+    caller asked for rather than something that arrives with a list.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM document_items WHERE document_id = ? ORDER BY line_no",
+            (document_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def transactions_matching(
+    amount: float, observed_at: str, window_days: int = 3
+) -> list[dict[str, Any]]:
+    """Transactions of this amount within a few days - candidates, not a match."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT fingerprint, date, memo, amount FROM transactions
+                WHERE ABS(amount - ?) < 0.005
+                  AND date BETWEEN date(?, ?) AND date(?, ?)
+                ORDER BY date""",
+            (amount, observed_at, f"-{window_days} days", observed_at, f"+{window_days} days"),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def link_document(
+    document_id: int, fingerprint: str, method: str, confidence: str, decided_at: str
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO document_links
+               (document_id, fingerprint, method, confidence, decided_at)
+               VALUES (?,?,?,?,?)""",
+            (document_id, fingerprint, method, confidence, decided_at),
+        )
+
+
+def delete_document(document_id: int) -> int:
+    """Remove a document and, by cascade, its lines and any link."""
+    with connect() as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn.execute("DELETE FROM documents WHERE id = ?", (document_id,)).rowcount

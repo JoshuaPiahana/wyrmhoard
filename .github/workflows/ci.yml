@@ -195,6 +195,7 @@ jobs:
               "wyrmhoard.config",
               "wyrmhoard.cache",
               "wyrmhoard.categorise",
+              "wyrmhoard.documents",
               "wyrmhoard.accounts",
               "wyrmhoard.facts",
               "wyrmhoard.figures",
