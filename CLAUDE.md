@@ -76,6 +76,12 @@ actually reads later.
   same care.
 - A stale `DOCKER_HOST` env var silently overrides Docker Desktop's context and
   makes every command fail while the engine is fine.
+- **The data guard cannot see a file you have not staged.** It runs
+  `git ls-files`, which reads the index, so a brand-new file is invisible to
+  `./hoard lint` and to the pre-commit hook until it is added. Running
+  `git add -A && git commit` as one command fires the hook *before* the add,
+  so a new file's first check happens in CI. Stage first, then lint, then
+  commit. This let an account number into a test file once.
 
 ## Where things are
 
