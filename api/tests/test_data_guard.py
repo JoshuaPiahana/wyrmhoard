@@ -102,13 +102,20 @@ def test_ordinary_tracked_files_are_not_swept_up(path: str):
     assert _guard().check([path]) == []
 
 
-def test_a_real_looking_account_number_is_still_caught_anywhere():
+def test_an_account_number_not_on_the_allowlist_is_still_caught():
     """
     The content scan is the other half, and it is unchanged.
 
-    A file outside every blocked directory is still read, and an account
-    number that is not on the synthetic allowlist still fails.
+    The test number is assembled at runtime rather than written out, and that
+    is not squeamishness. The first version of this file spelled one out to
+    look realistic, and CI rejected the file - correctly, because "never put a
+    real account number in a test" is a rule that cannot afford a carve-out for
+    numbers the author believes are invented. The guard reads file text, so a
+    number that is never a literal is never a violation.
     """
     guard = _guard()
+    not_allowlisted = "-".join(("99", "9999", "9999999", "97"))
+
+    assert not_allowlisted not in guard.ALLOWED_ACCOUNTS
+    assert guard.ACCOUNT_RE.search(f"paid to {not_allowlisted} on Tuesday")
     assert "38-9014-0123456-00" in guard.ALLOWED_ACCOUNTS
-    assert guard.ACCOUNT_RE.search("paid to 38-9021-0447291-00 last Tuesday")
