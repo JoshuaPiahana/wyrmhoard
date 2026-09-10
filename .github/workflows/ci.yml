@@ -114,7 +114,7 @@ jobs:
         # so date-boundary behaviour is tested the way it actually runs.
         env:
           TZ: Pacific/Auckland
-        run: pytest api/tests -q
+        run: pytest api/tests producers -q
 
   # ---------------------------------------------------------------------
   build:
