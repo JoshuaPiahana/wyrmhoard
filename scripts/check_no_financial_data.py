@@ -44,7 +44,24 @@ BLOCKED_PATHS = (
     "config/learned.yml",
 )
 
-BLOCKED_DIRS = ("reports/", "data/inbox/", "data/snapshots/")
+# Whole directories of real household data. `data/` is blocked wholesale
+# rather than by naming its subdirectories, because the subdirectories keep
+# arriving - inbox, payslips, backups, and receipts next - and each new one
+# was a hole until somebody remembered to add it here.
+#
+# Blocking the directory also catches file types the suffix list does not. A
+# supermarket purchase-history export is .json or .html; neither can be added
+# to BLOCKED_SUFFIXES without failing on web/src/index.html and
+# .claude/settings.json. And nothing in the content scan would notice it: a
+# receipt carries no bank account number and no IRD number, only a list of
+# what a household bought.
+BLOCKED_DIRS = ("reports/", "data/")
+
+# The only tracked paths permitted under a blocked directory. `data/samples/`
+# is where the synthetic generator writes, and .gitignore already un-ignores
+# it; `*.real.*` under it stays ignored, which is the trap that naming
+# convention exists for.
+BLOCKED_DIR_EXCEPTIONS = ("data/.gitkeep", "data/samples/")
 
 # Synthetic values used by the sample generator and the test suite. These are
 # the ONLY account numbers permitted in tracked source.
@@ -128,7 +145,10 @@ def check(paths: list[str]) -> list[str]:
             )
             continue
 
-        if posix in BLOCKED_PATHS or any(posix.startswith(d) for d in BLOCKED_DIRS):
+        in_blocked_dir = any(posix.startswith(d) for d in BLOCKED_DIRS) and not any(
+            posix == allowed or posix.startswith(allowed) for allowed in BLOCKED_DIR_EXCEPTIONS
+        )
+        if posix in BLOCKED_PATHS or in_blocked_dir:
             problems.append(f"{posix}: this path holds real household data.")
             continue
 
