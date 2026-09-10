@@ -64,8 +64,7 @@
         <div class="stat">
           <div class="v" data-bind="summary.cash.total" data-format="money">—</div>
           <div class="k">Cash on hand</div>
-          <div class="sub"><span data-bind="runway.weeks" data-format="weeks">—</span>
-            <span data-bind="runway.note"></span></div>
+          <div class="sub">as at <span data-bind="summary.cash.as_at" data-format="date">—</span></div>
         </div>
         <div class="stat">
           <div class="v" data-bind="summary.net_worth.net_worth" data-format="money">—</div>
@@ -133,7 +132,7 @@
     </section>
 
     <section>
-      <div class="grid g2">
+      <div>
         <div class="card">
           <h3>Small purchases</h3>
           <div class="stat" style="border:0; padding:0">
@@ -145,20 +144,6 @@
             <span data-bind="summary.small_leaks.average_size" data-format="money2">—</span> each —
             about <span data-bind="summary.small_leaks.per_week" data-format="money">—</span> a week.
             No single one felt like a decision, which is the difficulty with them.
-          </p>
-        </div>
-        <div class="card">
-          <h3>Essentials vs choices</h3>
-          <div class="stat" style="border:0; padding:0">
-            <div class="v" data-bind="choices.amount" data-format="money">—</div>
-            <div class="k">a month you have direct control over</div>
-          </div>
-          <p class="muted" style="margin-top:12px">
-            Against <span data-bind="choices.against" data-format="money">—</span>
-            of essentials and commitments. The second number is hard to move quickly;
-            the first is where a decision changes things fastest.
-            This split is <em>this dashboard's</em> judgement, not the ledger's —
-            it is one line in <code>app.js</code>, and yours to change.
           </p>
         </div>
       </div>
