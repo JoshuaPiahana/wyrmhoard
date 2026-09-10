@@ -22,7 +22,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import __version__, accounts, cache, categorise, config, db, facts, properties, taxonomy
+from . import (
+    __version__,
+    accounts,
+    cache,
+    categorise,
+    config,
+    db,
+    documents,
+    facts,
+    properties,
+    taxonomy,
+)
 from .analysis import cashflow, mortgage, recurring, series
 from .ingest import ingest_document, parse_csv, resolve_within, safe_upload_name
 
@@ -627,6 +638,112 @@ def remove_note(note_id: int) -> dict[str, Any]:
     removed = db.delete_note(note_id)
     if not removed:
         raise HTTPException(404, f"No note with id {note_id}.")
+    return {"deleted": removed}
+
+
+# --------------------------------------------------------------------------
+# Documents that itemise a transaction
+# --------------------------------------------------------------------------
+class DocumentItem(BaseModel):
+    description: str
+    quantity: float
+    unit: str
+    line_total: float
+    unit_price: float | None = None
+    source_category: str | None = None
+    raw: str | None = None
+    extra: dict[str, Any] | None = None
+
+
+class DocumentRequest(BaseModel):
+    producer: str
+    kind: str
+    merchant: str
+    observed_at: str
+    stated_total: float
+    items: list[DocumentItem]
+    currency: str = "NZD"
+    reference: str | None = None
+    source: str | None = None
+    confidence: str | None = None
+    extra: dict[str, Any] | None = None
+
+
+@app.post("/documents")
+def submit_document(req: DocumentRequest) -> dict[str, Any]:
+    """
+    Submit a receipt or invoice that itemises a transaction.
+
+    **This tool does not parse documents.** A producer reads whatever format its
+    source emits — a supermarket PDF, an export, a photographed docket — and
+    posts the result here. A retailer redesigns its receipt on its own schedule,
+    and a parser living in the core would mean releasing a finance tool because
+    a shop changed its letterhead.
+
+    What this end of it does is check the shape and refuse what does not fit.
+    The rule that matters: **the lines must add up to the stated total.** One
+    shop bills a checkout bag as a fee below the subtotal and another as a
+    product inside it; there is no opinion here about which is right, only that
+    the arithmetic closes.
+    """
+    try:
+        result = documents.submit(
+            **{**req.model_dump(exclude={"items"}), "items": [i.model_dump() for i in req.items]}
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    if result["stored"]:
+        try:
+            result["link"] = documents.link(result["document_id"])
+        except ValueError:
+            result["link"] = {"linked": False, "reason": "The document could not be re-read."}
+    cache.clear_all()
+    return result
+
+
+@app.get("/documents")
+def list_documents(limit: int | None = None) -> dict[str, Any]:
+    """
+    Every document, newest first — what it cost, and whether it is linked.
+
+    Deliberately without line descriptions. Product names are the most revealing
+    data this holds: a bank line names a supermarket, a receipt names a
+    medication. Reading them is a separate call.
+    """
+    return documents.summary(limit=limit)
+
+
+@app.get("/documents/{document_id}")
+def read_document(document_id: int) -> dict[str, Any]:
+    """One document with its lines. This is the call that returns product names."""
+    doc = db.document(document_id)
+    if doc is None:
+        raise HTTPException(404, f"No document with id {document_id}.")
+    return {**doc, "items": db.document_items(document_id)}
+
+
+@app.post("/documents/{document_id}/link")
+def relink_document(document_id: int) -> dict[str, Any]:
+    """
+    Try again to match a document to a transaction.
+
+    Worth calling after importing the account it was paid from. Where two
+    transactions fit equally well, nothing is chosen and the candidates are
+    returned — picking one silently is how a receipt ends up attached to the
+    wrong shop.
+    """
+    try:
+        return documents.link(document_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.delete("/documents/{document_id}")
+def remove_document(document_id: int) -> dict[str, Any]:
+    removed = db.delete_document(document_id)
+    if not removed:
+        raise HTTPException(404, f"No document with id {document_id}.")
     return {"deleted": removed}
 
 

@@ -311,8 +311,8 @@ _LEARNED_HEADER = """\
 # It can still change which category a transaction lands in, and that is worth
 # understanding before editing by hand. Rules are evaluated in priority order,
 # so a pattern under a lower-priority category wins transactions away from a
-# higher-priority one - teach "COUNTDOWN" to takeaways and your supermarket
-# shop stops being essential spending and starts being discretionary. Anything
+# higher-priority one - teach your supermarket's name to takeaways and the
+# weekly shop stops being essential spending and starts being a choice. Anything
 # taught through the app reports that when it happens; a hand edit does not.
 #
 # Safe to edit by hand: it is plain YAML, re-read on every run. Comments other
