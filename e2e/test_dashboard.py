@@ -106,6 +106,57 @@ def test_the_group_bar_adds_up_to_the_full_width(dashboard: Page):
     assert 99.0 <= total <= 101.0, f"Group bar segments total {total}%"
 
 
+def test_the_group_bar_hides_no_group_that_has_spending(dashboard: Page):
+    """
+    Every group with money in it gets a segment, including uncategorised.
+
+    This is the honest version of the two figures that were removed. They
+    summed some groups and either dropped or misfiled the rest, so a household
+    could not tell from the screen that a quarter of their spending was
+    unclassified. Showing each group separately cannot mislead that way.
+
+    Asserted against the API rather than against an expected group name,
+    because the sample ledger is fully categorised and a real one is not - a
+    test that demanded an "Unrecognised" row would pass or fail on which
+    dataset it happened to run against.
+    """
+    rendered = dashboard.locator('[data-list="grouplegend"] .row').count()
+    with_spend = dashboard.evaluate(
+        """() => fetch('/api/summary').then(r => r.json())
+              .then(s => Object.values(s.typical_month.by_group || {})
+                               .filter(v => v > 0).length)"""
+    )
+    assert rendered == with_spend, (
+        f"{with_spend} groups have spending but only {rendered} are on screen"
+    )
+
+
+def test_no_figure_on_the_page_is_derived_from_a_group_name(dashboard: Page):
+    """
+    The dashboard holds no opinion, and this is what stops one growing back.
+
+    It used to sum `essential`, `commitment` and `sinking` into a runway figure
+    and an "essentials vs choices" figure. Both split a three-way world -
+    unavoidable, chosen, and not yet categorised - into two, so the runway read
+    about 40% high and the choices figure 4.5x high.
+
+    Deciding which spending a household could actually stop is a judgement. The
+    core refuses to make it (`test_taxonomy.py`), and after this the viewer
+    refuses too. If it comes back it belongs in a lens the reader chooses.
+    """
+    source = dashboard.evaluate("() => fetch('/js/app.js').then(r => r.text())")
+
+    # The colour map keys groups without quoting them (`essential: '#2c5f5a'`),
+    # so a *quoted* group name means somebody is selecting or summing by it -
+    # which is exactly what `['essential', 'commitment', 'sinking']` was.
+    for name in ("essential", "commitment", "sinking", "discretionary"):
+        for quoted in (f"'{name}'", f'"{name}"'):
+            assert quoted not in source, (
+                f"app.js contains {quoted} - a figure selected or summed by group "
+                "name is a judgement about this household, not a reading of it"
+            )
+
+
 def test_no_tab_promises_something_the_tool_cannot_do(dashboard: Page):
     """
     There was an Entitlements tab. It estimated what a New Zealand household

@@ -7,7 +7,7 @@
 
    The contract with the markup is small:
      [data-bind="path.into.state"]  — filled with a formatted scalar
-     [data-format="money|money2|pct|weeks|int|date|text"]
+     [data-format="money|money2|pct|int|date|text"]
      [data-list="name"]             — a renderer fills this container
    ========================================================================== */
 
@@ -39,7 +39,6 @@ const FORMATTERS = {
   money:  v => money(v, 0),
   money2: v => money(v, 2),
   pct:    v => (v === null || v === undefined ? '—' : `${Number(v).toFixed(0)}%`),
-  weeks:  v => (v === null || v === undefined ? '—' : `${Number(v).toFixed(0)} weeks`),
   int:    v => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-NZ')),
   date:   v => (v ? new Date(v).toLocaleDateString('en-NZ',
                   { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
@@ -90,59 +89,19 @@ function notify(message, tone = 'info') {
   state.flash = { message, tone };
 }
 
-/* ---------- derived values --------------------------------------------
+/* ---------- derived values ---------------------------------------------
 
-   This dashboard is a consumer. The API reports what each spending group
-   cost and deliberately never adds two of them together, because deciding
-   which spending a household could actually stop is a judgement and two
-   households answer it differently without either being wrong.
+   Nothing here holds an opinion. The dashboard once summed three spending
+   groups into a "weeks of runway" figure and a "choices" figure, and both
+   were wrong in the same way: they split a three-way world - unavoidable,
+   chosen, and not yet categorised - into two. A quarter of this household's
+   spending sits in `unknown`, so the runway silently dropped it and read 40%
+   too high, while "choices" swept it in and read 4.5x too high.
 
-   So the judgement is made here, in the open, in one line. If you disagree
-   with it, change UNAVOIDABLE — that is the whole of it. If you renamed your
-   groups in rules.yml and did not update this, the runway figure disappears
-   rather than quietly measuring the wrong thing.
+   The group bar shows every group separately instead, including Unrecognised.
+   If a judgement like that comes back it belongs in a lens the reader chooses,
+   not welded into the viewer.
    ---------------------------------------------------------------------- */
-
-const UNAVOIDABLE = ['essential', 'commitment', 'sinking'];
-
-const WEEKS_PER_MONTH = 4.33;
-
-/** Monthly spending in the groups this dashboard treats as unavoidable. */
-function unavoidableSpend() {
-  const t = state.summary?.typical_month;
-  if (!t?.available) return null;
-  const present = UNAVOIDABLE.filter(k => t.by_group?.[k] !== undefined);
-  if (!present.length) return null;
-  return present.reduce((sum, k) => sum + (t.by_group[k] || 0), 0);
-}
-
-function deriveRunway() {
-  const cash = state.summary?.cash?.total;
-  const spend = unavoidableSpend();
-  if (cash === null || cash === undefined || !spend) {
-    return { weeks: null, note: 'Set UNAVOIDABLE in app.js to match your groups.' };
-  }
-  const idx = groupIndex();
-  const names = UNAVOIDABLE
-    .filter(k => state.summary.typical_month.by_group?.[k] !== undefined)
-    .map(k => idx[k]?.label || k);
-  return {
-    weeks: +(cash / (spend / WEEKS_PER_MONTH)).toFixed(1),
-    unavoidable: Math.round(spend),
-    note: `of ${names.join(', ').replace(/, ([^,]*)$/, ' and $1').toLowerCase()}`,
-  };
-}
-
-
-function deriveChoices() {
-  const t = state.summary?.typical_month;
-  if (!t?.available) return { amount: null, against: null };
-  const unavoidable = unavoidableSpend();
-  const chosen = Object.entries(t.by_group || {})
-    .filter(([k]) => !UNAVOIDABLE.includes(k))
-    .reduce((sum, [, v]) => sum + (v || 0), 0);
-  return { amount: chosen, against: unavoidable };
-}
 
 function deriveHeadline() {
   const t = state.summary?.typical_month;
@@ -718,8 +677,6 @@ async function refresh() {
     headline: null,
   });
   state.headline = deriveHeadline();
-  state.runway = deriveRunway();
-  state.choices = deriveChoices();
   state.mortgageNote = mortgage.available
     ? `clears ${String(mortgage.base.payoff_date).slice(0, 4)} on current payments`
     : 'add rate + repayment to household.yml';
