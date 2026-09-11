@@ -109,7 +109,7 @@ follow_imports = "skip"
 # pytest
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "producers"]
+testpaths = ["api/tests", "producers", "consumers"]
 pythonpath = ["api"]
 addopts = "-q --strict-markers"
 markers = [

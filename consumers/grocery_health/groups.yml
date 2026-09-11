@@ -1,0 +1,58 @@
+# ===========================================================================
+# groups.yml - this lens's opinion about food.
+#
+# Nobody else's. Wyrmhoard stores what a shop said each line was, verbatim -
+# "Deli & Chilled Foods", "Meal Ingredients" - and has no view on whether
+# yoghurt is fresh or processed. That is a judgement, two households would
+# make it differently, and so it lives here with the consumer that holds it,
+# exactly as the dashboard's idea of "unavoidable" spending once did.
+#
+# If a second consumer ever wants the same mapping, that is the moment to
+# move it into Wyrmhoard's config and have the core serve it - the same
+# argument that moved finance groups there. Not before.
+# ===========================================================================
+
+groups:
+  fresh: {label: "Fresh and whole"}
+  processed: {label: "Processed and packaged"}
+  drinks: {label: "Drinks, non-alcoholic"}
+  alcohol: {label: "Alcohol"}
+  household: {label: "Household, not food"}
+  personal: {label: "Personal and baby care"}
+  service: {label: "Fees, not goods"}
+
+# ---------------------------------------------------------------------------
+# A shop's own department, exactly as it wrote it, to one of the groups
+# above. Woolworths NZ online invoices carry these. In-store eReceipts carry
+# none, which is why the description patterns below exist.
+# ---------------------------------------------------------------------------
+by_source_category:
+  "Fruit & Vegetables": fresh
+  "Meat": fresh
+  # Cheese, yoghurt, milk. Calling dairy "fresh" is this lens's call and a
+  # defensible one to disagree with.
+  "Deli & Chilled Foods": fresh
+  "Meal Ingredients": processed
+  "Baking & Cooking": processed
+  "Frozen Foods": processed
+  "Canned & Prepared Foods": processed
+  "Breakfast Foods": processed
+  "Biscuits & Crackers": processed
+  "Chocolate, Sweets & Snacks": processed
+  "Drinks - Hot & Cold": drinks
+  "Beer, Wine & Spirits": alcohol
+  "Cleaning & Homecare": household
+  "Home & Kitchenware": household
+  "Personal Care": personal
+  "Baby Care": personal
+
+# ---------------------------------------------------------------------------
+# When the shop gave no department - fee lines on an online invoice, every
+# line on an in-store receipt - match the description instead. First match
+# wins. Case-insensitive substring; keep patterns specific enough not to
+# catch "oil" inside "toilet".
+# ---------------------------------------------------------------------------
+by_description:
+  - {match: "paper bags",   group: household}
+  - {match: "pick up fee",  group: service}
+  - {match: "delivery fee", group: service}
