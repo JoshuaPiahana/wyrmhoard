@@ -37,7 +37,7 @@ case "$cmd" in
   build)    docker compose build ;;
   # The repo root is mounted at /repo so tests that assert on project files
   # (the e2e isolation guard, for one) can find them here as well as in CI.
-  test)     docker compose run --rm --no-deps -v "$PWD:/repo" api python -m pytest tests/ /repo/producers -q "$@" ;;
+  test)     docker compose run --rm --no-deps -v "$PWD:/repo" api python -m pytest tests/ /repo/producers /repo/consumers -q "$@" ;;
   lint)
     # Both linters always run, even if the first fails - seeing every problem
     # at once beats fixing Python, re-running, and only then learning the JS

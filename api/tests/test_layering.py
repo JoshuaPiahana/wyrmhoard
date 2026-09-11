@@ -212,3 +212,50 @@ def test_ci_checks_every_core_module_installs_standalone():
         f"  imports a module that does not exist: {sorted(listed - actual) or 'none'}\n"
         f"  never proves these install alone:      {sorted(actual - listed) or 'none'}"
     )
+
+
+# ---------------------------------------------------------------------------
+# The outer layers, from the outside
+# ---------------------------------------------------------------------------
+def _repo_root() -> Path | None:
+    candidates = [Path(__file__).resolve().parents[2], Path("/repo"), Path.cwd()]
+    return next((c for c in candidates if (c / "producers").is_dir()), None)
+
+
+def _outer_programs() -> list[Path]:
+    root = _repo_root()
+    if root is None:
+        return []
+    return [
+        path
+        for layer in ("producers", "consumers")
+        for path in sorted((root / layer).rglob("*.py"))
+        if "__pycache__" not in path.parts
+    ]
+
+
+def test_there_are_outer_programs_to_check():
+    if _repo_root() is None:
+        pytest.skip("repo root not reachable from here; this guard runs in CI")
+    stems = {p.stem for p in _outer_programs()}
+    assert {"woolworths_online", "grocery_health"} <= stems
+
+
+@pytest.mark.parametrize("path", _outer_programs(), ids=lambda p: p.stem)
+def test_producers_and_consumers_never_import_the_core(path: Path):
+    """
+    A producer writes to the API and a consumer reads from it. Neither is
+    allowed to know that `wyrmhoard` is a Python package.
+
+    The point of the split is that a shop redesigning its receipt, or a
+    household wanting a new question answered, never requires a core release -
+    and that anybody can write either in any language. Both promises die the
+    first time an outer program does `from wyrmhoard.db import connect` because
+    it was quicker than an HTTP call, so the rule is checked here rather than
+    asked for in a README.
+    """
+    assert "wyrmhoard" not in imports_of(path), (
+        f"{path.relative_to(_repo_root())} imports the core directly. Producers "
+        "and consumers talk to Wyrmhoard over HTTP and nothing else - that is "
+        "what makes them replaceable, and what lets them be written in any language."
+    )
