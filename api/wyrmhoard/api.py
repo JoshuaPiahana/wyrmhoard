@@ -666,6 +666,8 @@ class DocumentRequest(BaseModel):
     reference: str | None = None
     source: str | None = None
     confidence: str | None = None
+    card_last4: str | None = None
+    time: str | None = None
     extra: dict[str, Any] | None = None
 
 

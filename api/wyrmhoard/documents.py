@@ -39,10 +39,18 @@ a payslip that does not balance already is.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from typing import Any
 
 from . import db, provenance
+
+# Four printed digits, no more, no less. A card number is 16 and Wyrmhoard has
+# no business holding one.
+_CARD_LAST4 = re.compile(r"^\d{4}$")
+# 24-hour HH:MM. Refusing a stray timezone or seconds keeps this a piece of
+# printed identifying detail and not a synthesised timestamp.
+_TIME_HHMM = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 #: What a document can be. Deliberately short - a new kind should be a
 #: considered addition, not a free-text field that accumulates typos.
@@ -121,6 +129,8 @@ def submit(
     reference: str | None = None,
     source: str | None = None,
     confidence: str | None = None,
+    card_last4: str | None = None,
+    time: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
@@ -138,6 +148,14 @@ def submit(
     producer = provenance.check_producer(producer)
     observed = provenance.check_observed_at(observed_at, what="document")
     confidence = provenance.check_confidence(confidence)
+
+    if card_last4 is not None and not _CARD_LAST4.match(str(card_last4)):
+        raise ValueError(
+            f"`card_last4` is the four printed digits of the paying card, got {card_last4!r}. "
+            f"Wyrmhoard is not a place for a full card number."
+        )
+    if time is not None and not _TIME_HHMM.match(str(time)):
+        raise ValueError(f"`time` is 24-hour HH:MM as printed on the document, got {time!r}.")
 
     if kind not in KINDS:
         raise ValueError(f"`kind` must be one of {', '.join(KINDS)} - got {kind!r}.")
@@ -170,6 +188,8 @@ def submit(
             "confidence": confidence,
             "stated_total": total,
             "currency": _require(currency, "a currency"),
+            "card_last4": _clean(card_last4),
+            "time": _clean(time),
             "extra": json.dumps(extra) if extra else None,
             "fingerprint": fp,
         },
