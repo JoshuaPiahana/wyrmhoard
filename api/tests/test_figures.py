@@ -34,6 +34,7 @@ READ_TOOLS = [
     "get_income",
     "get_uncategorised",
     "get_property",
+    "list_receipts",
 ]
 
 

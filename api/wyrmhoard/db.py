@@ -1006,6 +1006,19 @@ def transactions_matching(
     return [dict(r) for r in rows]
 
 
+def linked_document_ids() -> dict[str, int]:
+    """
+    Transaction fingerprint -> the document itemising it.
+
+    One query rather than one per row, because `list_transactions` annotates
+    every row it returns and a hundred lookups on a hundred rows is how a tool
+    gets slow enough that nobody notices it is also wrong.
+    """
+    with connect() as conn:
+        rows = conn.execute("SELECT fingerprint, document_id FROM document_links").fetchall()
+    return {r["fingerprint"]: r["document_id"] for r in rows}
+
+
 def link_document(
     document_id: int, fingerprint: str, method: str, confidence: str, decided_at: str
 ) -> None:

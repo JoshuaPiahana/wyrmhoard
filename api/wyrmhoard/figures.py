@@ -95,6 +95,10 @@ NON_CURRENCY = {
     "matched": "count",
     "rows_seen": "count",
     "rows_new": "count",
+    "line_count": "count",
+    "held_count": "count",
+    "linked_count": "count",
+    "unlinked_count": "count",
     # Severity tallies, which share their names with nothing else numeric
     "critical": "count",
     "high": "count",
@@ -108,6 +112,12 @@ NON_CURRENCY = {
     "birth_year": "year",
     "id": "identifier",
     "property_id": "identifier",
+    "receipt_id": "identifier",
+    "line_no": "position in a sequence",
+    # A receipt line's quantity is measured in whatever that line's `unit`
+    # says - 2.020 kg of apples, 1 ea of cheese - so the unit travels on the
+    # line rather than here.
+    "quantity": "in the same line's `unit` field",
 }
 
 # A field whose name ends in one of these is claiming a unit, so it has to be
