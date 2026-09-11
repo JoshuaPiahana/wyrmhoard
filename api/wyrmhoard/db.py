@@ -354,6 +354,15 @@ _ADDED_COLUMNS = {
         "er_super_annual": "REAL",
         "confidence": "TEXT",
     },
+    # Optional identifying detail a producer can carry when it has it. An
+    # in-store eReceipt prints the paying card's last four digits and the time
+    # to the minute; an emailed online invoice has neither. Neither is used by
+    # the linker yet - they are stored because throwing away a signal at ingest
+    # is not something a later feature can undo.
+    "documents": {
+        "card_last4": "TEXT",
+        "time": "TEXT",
+    },
 }
 
 
@@ -922,10 +931,11 @@ def add_document(doc: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, 
         cur = conn.execute(
             """INSERT INTO documents
                (kind, merchant, reference, observed_at, received_at, producer,
-                source, confidence, stated_total, currency, extra, fingerprint)
+                source, confidence, stated_total, currency, card_last4, time,
+                extra, fingerprint)
                VALUES (:kind, :merchant, :reference, :observed_at, :received_at,
                        :producer, :source, :confidence, :stated_total, :currency,
-                       :extra, :fingerprint)""",
+                       :card_last4, :time, :extra, :fingerprint)""",
             doc,
         )
         document_id = cur.lastrowid

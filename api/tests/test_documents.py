@@ -123,6 +123,40 @@ def test_the_same_document_twice_is_stored_once():
     assert len(db.documents()) == 1
 
 
+def test_the_paying_cards_last_four_and_the_time_are_stored_when_given():
+    """
+    An in-store eReceipt prints both; an emailed invoice prints neither.
+
+    Storing them means a later linker upgrade can use them - a bank memo
+    carrying the same last-four is a much stronger match than date and amount
+    alone. Throwing them away at ingest is not something a later feature could
+    undo.
+    """
+    result = documents.submit(**a_receipt(card_last4="2561", time="17:20"))
+    stored = db.document(result["document_id"])
+
+    assert stored["card_last4"] == "2561"
+    assert stored["time"] == "17:20"
+
+
+def test_something_longer_than_four_digits_is_refused_as_card_last4():
+    """
+    The whole reason this field exists is that four digits are what a receipt
+    prints and Wyrmhoard has no business holding sixteen.
+    """
+    with pytest.raises(ValueError, match="four printed digits"):
+        documents.submit(**a_receipt(card_last4="2561111122223333"))
+
+
+def test_a_time_that_is_not_24h_hhmm_is_refused():
+    """
+    "5pm" and "17:20:00 NZST" are things a lazy parser could hand over, and both
+    make the field useless for later comparison.
+    """
+    with pytest.raises(ValueError, match="HH:MM"):
+        documents.submit(**a_receipt(time="5pm"))
+
+
 def test_a_missing_unit_price_is_allowed():
     """One document gives a unit price on every line; another only where it varies."""
     result = documents.submit(**a_receipt())
