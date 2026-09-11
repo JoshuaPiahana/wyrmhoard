@@ -30,7 +30,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from wyrmhoard import cache, categorise, config, db, mcp_server
+from wyrmhoard import cache, categorise, config, db, documents, mcp_server
 from wyrmhoard.ingest import parse_csv
 
 ACCOUNT = "38-9014-0123456-00"
@@ -66,6 +66,50 @@ def load_unknown_spending(memo: str, rows: int = 3, amount: float = -12.50):
     db.insert_transactions(parsed, "unknown.csv")
     cache.clear_all()
     categorise.recategorise_all()
+
+
+def load_a_receipt(paid_on: str = "2025-01-03") -> int:
+    """
+    One itemised receipt, linked to the third row `load_some_data` makes.
+
+    Invented products. Real ones stay in `data/`, which the guard blocks.
+    """
+    load_some_data()
+    result = documents.submit(
+        producer="tool:example-receipts",
+        kind="receipt",
+        merchant="New World Example",
+        observed_at=paid_on,
+        stated_total=52.00,
+        items=[
+            {
+                "description": "Blue milk 2l",
+                "quantity": 2,
+                "unit": "ea",
+                "unit_price": 5.00,
+                "line_total": 10.00,
+                "source_category": "Dairy & Eggs",
+            },
+            {
+                "description": "Bananas loose",
+                "quantity": 1.12,
+                "unit": "kg",
+                "unit_price": 3.75,
+                "line_total": 4.20,
+                "source_category": "Fruit & Vegetables",
+            },
+            {
+                "description": "Dish soap 500ml",
+                "quantity": 1,
+                "unit": "ea",
+                "line_total": 37.80,
+                "source_category": "Cleaning & Homecare",
+            },
+        ],
+    )
+    documents.link(result["document_id"])
+    cache.clear_all()
+    return result["document_id"]
 
 
 def registered_tools() -> dict[str, str]:
@@ -120,6 +164,8 @@ def test_the_expected_tools_are_exposed():
         "import_document",
         "record_note",
         "list_transactions",
+        "list_receipts",
+        "get_receipt",
     ):
         assert expected in names, f"{expected} is missing from the agent contract"
 
@@ -139,9 +185,18 @@ def test_the_server_tells_an_agent_how_to_behave():
     assert "not regulated financial advice" in instructions.lower()
 
 
-def test_the_raw_transaction_tool_warns_against_itself():
-    """The one tool returning raw records must say why to avoid it."""
-    description = registered_tools()["list_transactions"]
+RAW_TOOLS = ("list_transactions", "get_receipt")
+
+
+@pytest.mark.parametrize("tool", RAW_TOOLS)
+def test_every_raw_tool_warns_against_itself(tool):
+    """
+    A tool returning raw records must say why to avoid it, and name the
+    summary to prefer. There were one of these for a year; now there are two,
+    and the rule is the same for each - a model reads the description and
+    nothing else, so the description is where the restraint has to live.
+    """
+    description = registered_tools()[tool]
     assert "sparingly" in description.lower()
     assert "get_spending_breakdown" in description
 
@@ -186,6 +241,11 @@ def test_the_overview_carries_no_merchant_names():
 def test_raw_transactions_carry_a_privacy_note():
     load_some_data()
     assert "privacy_note" in mcp_server.list_transactions()
+
+
+def test_a_receipt_carries_a_privacy_note():
+    receipt_id = load_a_receipt()
+    assert "privacy_note" in mcp_server.get_receipt(receipt_id)
 
 
 # ---------------------------------------------------------------------------
@@ -509,3 +569,65 @@ def test_a_taught_rule_records_who_taught_it(private_config):
 
     # And the extra key must not disturb how rules are read.
     assert "QUAYSIDE" in config.rules()["categories"]["takeaways"]["match"]
+
+
+# ---------------------------------------------------------------------------
+# Receipts: what was bought, on request
+# ---------------------------------------------------------------------------
+def test_a_transaction_with_a_receipt_says_so():
+    """
+    The failure this exists for: an agent asked what a shop consisted of, with
+    every line of the receipt sitting in the database, had no way to learn
+    that and reported a hole that was not there. The row now carries the id.
+    """
+    receipt_id = load_a_receipt()
+    rows = mcp_server.list_transactions()["transactions"]
+
+    with_receipt = [r for r in rows if "receipt_id" in r]
+    assert len(with_receipt) == 1
+    assert with_receipt[0]["receipt_id"] == receipt_id
+    assert with_receipt[0]["amount"] == -52.0
+
+
+def test_gaps_say_how_many_purchases_can_be_itemised():
+    load_some_data()
+    none = mcp_server.describe_data_gaps()
+    assert none["receipts"] == {"held_count": 0, "linked_count": 0}
+    assert any("No itemised receipts" in g for g in none["gaps"])
+
+    load_a_receipt()
+    some = mcp_server.describe_data_gaps()
+    assert some["receipts"] == {"held_count": 1, "linked_count": 1}
+    assert any("get_receipt" in g for g in some["gaps"]), "the agent is told how to read them"
+
+
+def test_the_receipt_listing_names_no_product():
+    """Listing is the summary; the lines are the raw call. Same split as the API."""
+    load_a_receipt()
+    listing = mcp_server.list_receipts()
+
+    assert listing["count"] == 1
+    entry = listing["receipts"][0]
+    assert entry["line_count"] == 3
+    assert entry["linked_to_a_transaction"] is True
+    assert "Blue milk" not in json.dumps(listing)
+
+
+def test_a_receipt_is_served_line_by_line_with_the_shops_own_words():
+    receipt_id = load_a_receipt()
+    receipt = mcp_server.get_receipt(receipt_id)
+
+    assert receipt["line_count"] == 3
+    assert round(sum(line["line_total"] for line in receipt["lines"]), 2) == receipt["stated_total"]
+    bananas = next(line for line in receipt["lines"] if "Bananas" in line["description"])
+    assert bananas["source_category"] == "Fruit & Vegetables", "the shop's word, verbatim"
+    assert bananas["unit"] == "kg"
+    assert receipt["provenance"]["producer"] == "tool:example-receipts"
+    assert receipt["units"]["except"]["quantity"], "a quantity is not an amount of money"
+
+
+def test_a_missing_receipt_is_an_answer_not_a_crash():
+    load_some_data()
+    result = mcp_server.get_receipt(999)
+    assert "error" in result
+    assert "list_receipts" in result["error"], "and the agent is told where to look"

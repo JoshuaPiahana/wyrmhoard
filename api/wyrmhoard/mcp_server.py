@@ -13,8 +13,9 @@ Three rules shape every tool below.
       An agent answering "can we afford a holiday?" needs a two-kilobyte
       summary, not three thousand rows naming every shop a family visited.
       Minimisation is built into which tools exist, not left to a policy
-      somebody has to remember. `list_transactions` exists, but it is the only
-      one that returns raw records and its description says so.
+      somebody has to remember. Two tools return raw records -
+      `list_transactions` and `get_receipt` - and each says so in its own
+      description, because a model gets that description and nothing else.
 
   Every number carries its provenance.
       Units, the window it covers, how it was derived, how confident the tool
@@ -48,15 +49,26 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, accounts, categorise, config, db, facts, figures, properties, taxonomy
+from . import (
+    __version__,
+    accounts,
+    categorise,
+    config,
+    db,
+    documents,
+    facts,
+    figures,
+    properties,
+    taxonomy,
+)
 from .analysis import cashflow, income, mortgage, recurring, series
 
 server = MCPServer(
     "wyrmhoard",
     instructions=(
-        "Wyrmhoard holds one household's own bank and payslip records and "
-        "computes exact figures from them. It runs entirely on the user's "
-        "machine and sends nothing anywhere.\n\n"
+        "Wyrmhoard holds one household's own bank records, payslips and "
+        "itemised receipts, and computes exact figures from them. It runs "
+        "entirely on the user's machine and sends nothing anywhere.\n\n"
         "Start with `get_overview`. It answers most questions on its own and "
         "states how much of the data is understood.\n\n"
         "Before drawing any conclusion, call `describe_data_gaps`. This tool "
@@ -65,7 +77,10 @@ server = MCPServer(
         "reporting confidently over those holes has caused real harm here.\n\n"
         "Prefer the summary tools. `list_transactions` returns raw records "
         "including merchant names and should only be used when the user has "
-        "asked something that genuinely needs them.\n\n"
+        "asked something that genuinely needs them. `get_receipt` returns the "
+        "lines of one receipt, product by product, and the same restraint "
+        "applies: a transaction says which shop, a receipt says which "
+        "medication.\n\n"
         "When coverage is low, there is something you can do about it. "
         "`get_uncategorised` groups the unrecognised spending by merchant, and "
         "`teach_category` records what you work out as a durable rule. A "
@@ -171,8 +186,7 @@ def describe_data_gaps() -> dict[str, Any]:
 
     Reports accounts that money clearly arrives from but which were never
     imported, how much spending could not be categorised, whether any payslips
-    exist, and whether the tax rate constants have been checked against the
-    official source.
+    exist, and how many purchases have an itemised receipt behind them.
 
     This matters more than it sounds. Wyrmhoard once told a household they
     appeared to be missing family tax credits; the credits were arriving in a
@@ -203,6 +217,26 @@ def describe_data_gaps() -> dict[str, Any]:
             "and is approximate."
         )
 
+    # What a purchase consisted of is invisible unless a receipt was submitted
+    # for it. Said either way: an agent once had every line of a receipt in
+    # this database and no way to learn that, so it reported a hole that was
+    # not there - the one failure this tool exists to prevent.
+    receipts = documents.summary()
+    held = receipts["count"]
+    linked = held - receipts["unlinked"]
+    if held:
+        gaps.append(
+            f"{held} itemised receipt(s) are held, linked to {linked} transaction(s). "
+            "What was bought is knowable for those purchases only - `get_receipt` "
+            "reads the lines - and for no other."
+        )
+    else:
+        gaps.append(
+            "No itemised receipts are held, so nothing here can say what any "
+            "purchase consisted of, only where it was made. A producer can submit "
+            "receipts - see producers/."
+        )
+
     # Facts about the people, which no export can supply. Listed as questions
     # rather than gaps because an agent can simply ask them, and one answer
     # here is often worth more than any amount of further analysis.
@@ -219,6 +253,7 @@ def describe_data_gaps() -> dict[str, Any]:
             "gaps": gaps,
             "missing_accounts": missing,
             "coverage": coverage,
+            "receipts": {"held_count": held, "linked_count": linked},
             "household_facts": facts.all_facts(),
             "questions_for_the_household": unknown_facts,
             "guidance": (
@@ -762,11 +797,15 @@ def list_transactions(
     """
     Individual transactions. Use sparingly.
 
-    This is the only tool returning raw records, and they name every shop,
-    person and service the household paid. Prefer `get_spending_breakdown` for
-    anything about totals or patterns; reach for this only when the user has
-    asked something that genuinely needs individual rows, such as identifying a
-    specific unrecognised payment.
+    These are raw records, and they name every shop, person and service the
+    household paid. Prefer `get_spending_breakdown` for anything about totals
+    or patterns; reach for this only when the user has asked something that
+    genuinely needs individual rows, such as identifying a specific
+    unrecognised payment.
+
+    A row that has an itemised receipt carries its `receipt_id`. That is the
+    only way to learn a purchase can be broken down further; `get_receipt`
+    reads the lines.
 
     Args:
         month: restrict to one month, as YYYY-MM.
@@ -778,12 +817,14 @@ def list_transactions(
         rows = [r for r in rows if str(r["date"]).startswith(month)]
     if category:
         rows = [r for r in rows if r["category"] == category]
+    itemised = db.linked_document_ids()
     trimmed = [
         {
             "date": r["date"],
             "description": r["memo"],
             "amount": r["amount"],
             "category": r["category"],
+            **({"receipt_id": itemised[r["fingerprint"]]} if r["fingerprint"] in itemised else {}),
         }
         for r in rows[-limit:]
     ]
@@ -796,6 +837,104 @@ def list_transactions(
             "only what the question needs and do not repeat them wholesale."
         ),
     }
+
+
+@server.tool()
+def list_receipts(limit: int | None = None) -> dict[str, Any]:
+    """
+    Every itemised document held - receipts, invoices, statements - newest first.
+
+    Each entry says which shop, what day, what it cost, how many lines it has,
+    which producer submitted it and whether it has been matched to a bank
+    transaction. It does not include the lines: product names are the most
+    revealing thing this database holds, and reading them is a separate,
+    deliberate call to `get_receipt`.
+
+    Call this to learn whether a question about what was bought can be
+    answered at all. Most purchases have no receipt; `describe_data_gaps` says
+    how many do.
+
+    Args:
+        limit: at most this many, newest first. Default: all.
+    """
+    summary = documents.summary(limit=limit)
+    return _described(
+        {
+            "receipts": [
+                {
+                    "receipt_id": d["id"],
+                    "kind": d["kind"],
+                    "merchant": d["merchant"],
+                    "observed_at": d["observed_at"],
+                    "stated_total": d["stated_total"],
+                    "currency": d["currency"],
+                    "line_count": d["item_count"],
+                    "producer": d["producer"],
+                    "confidence": d["confidence"],
+                    "linked_to_a_transaction": bool(d.get("fingerprint")),
+                }
+                for d in summary["documents"]
+            ],
+            "count": summary["count"],
+            "unlinked_count": summary["unlinked"],
+        }
+    )
+
+
+@server.tool()
+def get_receipt(receipt_id: int) -> dict[str, Any]:
+    """
+    One receipt, line by line. Use sparingly.
+
+    This returns product names. A transaction says which shop; a receipt says
+    which medication, which brand, which quantity - the most revealing records
+    the household holds. Prefer `get_spending_breakdown` and
+    `get_spending_over_time` for anything about money; reach for this only when
+    the user has asked what a purchase consisted of.
+
+    Each line carries the shop's own department in `source_category`, verbatim
+    and untranslated - "Deli & Chilled Foods", "Personal Care" - where the shop
+    supplied one. Wyrmhoard has no view on whether a line is healthy, essential
+    or anything else; that is the caller's judgement to make and to own. Lines
+    always sum to `stated_total`; a document that did not was refused on the
+    way in.
+
+    Args:
+        receipt_id: from `list_receipts` or a transaction's `receipt_id`.
+    """
+    doc = db.document(receipt_id)
+    if doc is None:
+        return {"error": f"No receipt with id {receipt_id}. `list_receipts` shows what is held."}
+    lines = [
+        {
+            "line_no": i["line_no"],
+            "description": i["description"],
+            "quantity": i["quantity"],
+            "unit": i["unit"],
+            "unit_price": i["unit_price"],
+            "line_total": i["line_total"],
+            "source_category": i["source_category"],
+        }
+        for i in db.document_items(receipt_id)
+    ]
+    return _described(
+        {
+            "receipt_id": doc["id"],
+            "kind": doc["kind"],
+            "merchant": doc["merchant"],
+            "observed_at": doc["observed_at"],
+            "stated_total": doc["stated_total"],
+            "currency": doc["currency"],
+            "lines": lines,
+            "line_count": len(lines),
+            "privacy_note": (
+                "These lines name what a household bought, item by item. Answer the "
+                "question asked and do not repeat them wholesale."
+            ),
+        },
+        producer=doc["producer"],
+        confidence=doc["confidence"],
+    )
 
 
 def main() -> None:

@@ -311,8 +311,9 @@ and `args` of an MCP server entry.
 
 **Summaries by default.** An agent answering "can we afford a holiday?" gets a
 three-kilobyte summary, not three thousand rows naming every shop you visited.
-On a real two-year ledger that is **154× less data** than the raw records —
-and `list_transactions` is the only tool that returns raw rows at all, with a
+On a real two-year ledger that is **154× less data** than the raw records.
+Two tools return raw rows at all — `list_transactions` for bank lines and
+`get_receipt` for what one purchase consisted of — and each carries a
 description telling the model to avoid it. Minimisation is built into which
 tools exist, not left to a policy somebody has to remember.
 
@@ -323,7 +324,8 @@ not told.
 **`describe_data_gaps` is a first-class tool**, and the server's instructions
 tell agents to call it before drawing conclusions. It reports accounts money
 arrives from that were never imported, spending it could not categorise, and
-rate constants nobody has verified. This exists because the tool once told a
+how many purchases can be broken down further because a receipt was submitted
+for them. This exists because the tool once told a
 household they were missing family tax credits that were simply arriving in an
 account it had not been given.
 
