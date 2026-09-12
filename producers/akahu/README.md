@@ -166,9 +166,9 @@ account.
 
 ## What it works out for itself
 
-Two rules, for the two shapes Kiwibank writes when money moves between a
-customer's own accounts. Nothing else is inferred, and a value Akahu did
-supply is never overwritten.
+Three rules, for the three shapes a Kiwibank feed carries when money moves
+between a customer's own accounts. Nothing else is inferred, and a value
+Akahu did supply is never overwritten.
 
 **A transfer names its destination's suffix.** `TRANSFER TO J SAMPLE - 02`
 on account `…-00` went to `…-02`, and the `TRANSFER FROM J SAMPLE - 00` on
@@ -186,19 +186,34 @@ side. One side alone (the other account not connected to Akahu, or the
 payee somebody else) stays blank. Two candidates stay blank. It never
 guesses.
 
+**The same payment into a pot loses its number on the way.** Where the
+bank's own export says `AP#12345678 FROM J SAMPLE` on the receiving pot, the
+feed says `Automatic Payment Rainy day J SAMPLE` - the number gone, the
+reference kept. The paying side still reads `AP#12345678 TO J SAMPLE`, and
+both rows carry the same reference: the memo typed when the payment was set
+up. So the pairing key is the reference instead of the number, with the same
+day, the same amount and the same exactly-one-each-side test. A payment set
+up with no reference cannot pair this way and stays blank, because day and
+amount alone could join two unrelated payments. Seen on every sinking-fund
+top-up in one household's feed, while the same payments into the loan
+accounts kept their numbers - so both rules are needed.
+
 Every row carries a `Counterparty source` column saying which of `akahu`,
-`transfer suffix` or `AP# pair` put the value there, so the file in
-`data/inbox/` always distinguishes what the bank said from what this program
-worked out. Wyrmhoard ignores the column. The run reports the counts either
-way:
+`transfer suffix`, `AP# pair` or `AP reference pair` put the value there, so
+the file in `data/inbox/` always distinguishes what the bank said from what
+this program worked out. Wyrmhoard ignores the column. The run reports the
+counts either way:
 
 ```
-  other party's account: 268 from Akahu, 256 by transfer suffix, 520 by AP# pairing; still blank: 0 transfers, 12 AP# rows
+  other party's account: 1 from Akahu, 6 by transfer suffix, 4 by AP# pairing, 6 by AP reference; still blank: 1 transfers, 0 automatic payments
 ```
 
-The "still blank" numbers are the ones to read. A transfer or `AP#` row with
-no other party will be categorised from its text like any other row, which
-for a movement between your own pots usually means it reads as spending.
+The "still blank" numbers are the ones to read. A transfer or automatic
+payment with no other party will be categorised from its text like any other
+row, which for a movement between your own pots usually means it reads as
+spending. A blank is not always wrong: `TRANSFER FROM J SAMPLE - 00` where
+the sender is somebody else's account with a `-00` suffix on a *different*
+prefix is money arriving from outside, and it stays blank on purpose.
 The dry run also prints the first few rows each rule filled, next to the
 account it chose, so they can be checked against internet banking before
 anything is stored.
