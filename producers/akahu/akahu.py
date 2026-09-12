@@ -45,7 +45,7 @@ spending. Measured on one Kiwibank ledger: 773 of 1,147 rows lost it, and
 categorisation coverage fell from 81.5% to 48.1%.
 
 The bank's own text still carries enough to put it back, and this producer
-does, under two rules and no others:
+does, under three rules and no others:
 
 - `TRANSFER TO … - 02` names the suffix of the household's own account the
   money went to. Filled only when an account with that suffix, on the same
@@ -54,11 +54,17 @@ does, under two rules and no others:
   day, amounts equal and opposite, are the two sides of one automatic
   payment. Each is filled with the other's account. One side alone, or more
   than one candidate for it, stays blank - never a guess.
+- The same payment arriving in a pot rather than a loan comes through the
+  feed as `Automatic Payment <reference> …` with the number gone, so it
+  cannot pair by number. It pairs instead on the reference - the memo typed
+  when the payment was set up, which both rows carry - plus the same day
+  and amount, under the same exactly-one-each-side test. No reference, no
+  pairing.
 
 A value Akahu did supply is never overwritten. `Counterparty source` records
-which of the three put each value there, so the stored file always says what
+which of the four put each value there, so the stored file always says what
 came from the bank and what this program worked out. Both runs report the
-counts, including how many transfers and `AP#` rows are still blank.
+counts, including how many transfers and automatic payments are still blank.
 
 This is knowledge about how one bank writes a description. It belongs here,
 in the producer for that feed, and not in the core.
@@ -144,6 +150,7 @@ SOURCE = "Counterparty source"
 FROM_AKAHU = "akahu"
 FROM_TRANSFER_SUFFIX = "transfer suffix"
 FROM_AP_PAIR = "AP# pair"
+FROM_AP_REFERENCE = "AP reference pair"
 TRANSFERS_BLANK = "transfers still blank"
 AP_BLANK = "AP# rows still blank"
 
@@ -345,13 +352,20 @@ _ANY_TRANSFER_RE = re.compile(r"^TRANSFER (?:TO|FROM)\b", re.IGNORECASE)
 # An automatic payment carries its number on both sides, and only the
 # direction word differs.
 _AP_RE = re.compile(r"^AP#(\d+) (TO|FROM)\b", re.IGNORECASE)
+# ...except that on a pot (a CHECKING or SAVINGS account of the same
+# customer) the arriving side comes through Akahu rewritten as
+# "Automatic Payment <reference> <holder names>" - number gone, reference
+# kept. The bank's own export still says "AP#N FROM" there; this is what the
+# feed does to it. Seen on every sinking-fund top-up in a real ledger, while
+# the same AP into a LOAN account kept its number.
+_AP_ARRIVING_RE = re.compile(r"^Automatic Payment\b", re.IGNORECASE)
 
 
 def recover_counterparties(rows: list[dict[str, str]], accounts: list[dict[str, Any]]) -> None:
     """
     Fill the other party's account on rows Akahu left blank, where the bank's
     own text proves which of the household's accounts it is. See the module
-    docstring for the two rules; nothing else is inferred, and a value Akahu
+    docstring for the three rules; nothing else is inferred, and a value Akahu
     supplied is never touched. Rows are changed in place so that the
     `Counterparty source` column can say which rule did it.
 
@@ -388,6 +402,33 @@ def recover_counterparties(rows: list[dict[str, str]], accounts: list[dict[str, 
             continue
         key = (found.group(1), row["Date"], f"{abs(amount):.2f}")
         sides.setdefault(key, []).append(row)
+    _fill_pairs(sides, FROM_AP_PAIR)
+
+    # Rule 3: the same payment when the feed has rewritten its arriving side.
+    # "AP#N TO …" paying out, still blank after rule 2 because no "AP#N FROM"
+    # exists, and "Automatic Payment …" paid in, the same day and amount and
+    # carrying the same reference - the memo the account holder typed when
+    # setting the payment up, which the feed keeps on both rows. A blank
+    # reference is not a key: date and amount alone could pair two unrelated
+    # payments, and this never guesses.
+    sides = {}
+    for row in blank:
+        if row[COUNTERPARTY] or not row["Reference"]:
+            continue
+        amount = float(row["Amount"])
+        found = _AP_RE.match(row["Description"])
+        if found:
+            if found.group(2).upper() != "TO" or amount >= 0:
+                continue
+        elif not _AP_ARRIVING_RE.match(row["Description"]) or amount <= 0:
+            continue
+        key = (row["Reference"], row["Date"], f"{abs(amount):.2f}")
+        sides.setdefault(key, []).append(row)
+    _fill_pairs(sides, FROM_AP_REFERENCE)
+
+
+def _fill_pairs(sides: dict[tuple[str, str, str], list[dict[str, str]]], source: str) -> None:
+    """Fill both rows of every key that has exactly one paying and one receiving side."""
     for pair in sides.values():
         out = [r for r in pair if float(r["Amount"]) < 0]
         into = [r for r in pair if float(r["Amount"]) > 0]
@@ -397,7 +438,7 @@ def recover_counterparties(rows: list[dict[str, str]], accounts: list[dict[str, 
             continue
         out[0][COUNTERPARTY] = into[0]["Account number"]
         into[0][COUNTERPARTY] = out[0]["Account number"]
-        out[0][SOURCE] = into[0][SOURCE] = FROM_AP_PAIR
+        out[0][SOURCE] = into[0][SOURCE] = source
 
 
 def counterparty_summary(rows: list[dict[str, str]]) -> dict[str, int]:
@@ -405,7 +446,8 @@ def counterparty_summary(rows: list[dict[str, str]]) -> dict[str, int]:
     Where the other party's account came from, and what is still blank.
 
     The two "still blank" counts are the honest ones - a transfer whose text
-    carries no suffix, an `AP#` whose other side was not in the feed - and
+    carries no suffix, an automatic payment whose other side was not in the
+    feed or came through with neither number nor reference - and
     they are printed so that a rule quietly failing to fire is noticed rather
     than read as spending.
     """
@@ -413,6 +455,7 @@ def counterparty_summary(rows: list[dict[str, str]]) -> dict[str, int]:
         FROM_AKAHU: 0,
         FROM_TRANSFER_SUFFIX: 0,
         FROM_AP_PAIR: 0,
+        FROM_AP_REFERENCE: 0,
         TRANSFERS_BLANK: 0,
         AP_BLANK: 0,
     }
@@ -421,7 +464,7 @@ def counterparty_summary(rows: list[dict[str, str]]) -> dict[str, int]:
             counts[row[SOURCE]] += 1
         elif _ANY_TRANSFER_RE.match(row["Description"]):
             counts[TRANSFERS_BLANK] += 1
-        elif _AP_RE.match(row["Description"]):
+        elif _AP_RE.match(row["Description"]) or _AP_ARRIVING_RE.match(row["Description"]):
             counts[AP_BLANK] += 1
     return counts
 
@@ -561,8 +604,9 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"  other party's account: {found[FROM_AKAHU]} from Akahu, "
         f"{found[FROM_TRANSFER_SUFFIX]} by transfer suffix, "
-        f"{found[FROM_AP_PAIR]} by AP# pairing; still blank: "
-        f"{found[TRANSFERS_BLANK]} transfers, {found[AP_BLANK]} AP# rows"
+        f"{found[FROM_AP_PAIR]} by AP# pairing, {found[FROM_AP_REFERENCE]} by AP reference; "
+        f"still blank: "
+        f"{found[TRANSFERS_BLANK]} transfers, {found[AP_BLANK]} automatic payments"
     )
 
     if args.dry_run:
@@ -572,7 +616,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {calendar_date(t['date'])}  <- {t['date']}  "
                 f"{float(t['amount']):>10.2f}  {(t.get('description') or '')[:40]}"
             )
-        for rule in (FROM_TRANSFER_SUFFIX, FROM_AP_PAIR):
+        for rule in (FROM_TRANSFER_SUFFIX, FROM_AP_PAIR, FROM_AP_REFERENCE):
             recovered = [r for r in rows if r[SOURCE] == rule]
             if not recovered:
                 continue

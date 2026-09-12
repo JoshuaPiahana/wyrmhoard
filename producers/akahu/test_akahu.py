@@ -26,6 +26,7 @@ from akahu import (
     COUNTERPARTY,
     FROM_AKAHU,
     FROM_AP_PAIR,
+    FROM_AP_REFERENCE,
     FROM_TRANSFER_SUFFIX,
     SOURCE,
     TRANSFERS_BLANK,
@@ -237,7 +238,7 @@ def test_a_transaction_on_an_unlisted_account_is_refused_not_guessed():
 # --------------------------------------------------------------------------
 # Recovering the other side of the household's own movements
 # --------------------------------------------------------------------------
-# The two shapes a Kiwibank feed emits for money moving between a household's
+# The three shapes a Kiwibank feed emits for money moving between a household's
 # own accounts, with the holder names and AP numbers changed. Akahu supplies
 # no `other_account` on any of them - that is the whole problem.
 NZ_MIDNIGHT = "2026-09-08T12:00:00.000Z"  # stored as 2026-09-09
@@ -247,6 +248,18 @@ def movement(_id, account, amount, description, when=NZ_MIDNIGHT, **extra):
     return txn(_id, account, when, amount, description, type="TRANSFER", **extra)
 
 
+def pot_top_up(_id, account, amount, reference, when=NZ_MIDNIGHT):
+    """
+    The arriving side of an automatic payment into a pot, as the feed rewrites
+    it: the AP number is gone and the reference is the only thing that ties it
+    to the paying side. The bank's own export says "AP#N FROM …" here.
+    """
+    description = f"Automatic Payment {reference} A B SAMPLE C D SAM"
+    return txn(
+        _id, account, when, amount, description, type="CREDIT", meta={"reference": reference}
+    )
+
+
 OWN_MOVEMENTS = [
     # A transfer: the text ends in the *other* account's suffix, on both sides.
     movement("mv_1", EVERYDAY, -520.0, "TRANSFER TO A B SAMPLE, C D SAMPLE - 05"),
@@ -254,6 +267,9 @@ OWN_MOVEMENTS = [
     # An automatic payment: the number is in the text and the suffix is not.
     movement("mv_3", EVERYDAY, -23.68, "AP#10000001 TO A B SAMPLE", meta={"reference": "LOAN"}),
     movement("mv_4", LOAN, 23.68, "AP#10000001 FROM A B SAMPLE, C D SAMPLE"),
+    # The same, into a pot: the number survives only on the paying side.
+    movement("mv_5", EVERYDAY, -250.0, "AP#10000002 TO A B SAMPLE", meta={"reference": "Rainy"}),
+    pot_top_up("mv_6", SAVINGS, 250.0, "Rainy"),
 ]
 
 
@@ -350,6 +366,65 @@ def test_more_than_one_candidate_is_ambiguous_and_nothing_is_guessed():
     assert counterparty_summary(list(rows.values()))[AP_BLANK] == 3
 
 
+def test_an_automatic_payment_into_a_pot_is_paired_by_reference_day_and_amount():
+    rows = recovered(OWN_MOVEMENTS)
+
+    out = rows["AP#10000002 TO A B SAMPLE"]
+    assert out[COUNTERPARTY] == "38-9014-0000000-01"
+    assert out[SOURCE] == FROM_AP_REFERENCE
+
+    back = rows["Automatic Payment Rainy A B SAMPLE C D SAM"]
+    assert back[COUNTERPARTY] == "38-9014-0123456-00"
+    assert back[SOURCE] == FROM_AP_REFERENCE
+
+
+@pytest.mark.parametrize(
+    "others, why",
+    [
+        ([], "the other side is not in the feed"),
+        ([pot_top_up("x", SAVINGS, 250.0, "Other")], "a different reference"),
+        (
+            [pot_top_up("x", SAVINGS, 250.0, "Rainy", when="2026-09-09T12:00:00.000Z")],
+            "a different day",
+        ),
+        ([pot_top_up("x", SAVINGS, 250.01, "Rainy")], "a different amount"),
+        ([pot_top_up("x", EVERYDAY, 250.0, "Rainy")], "the same account both sides"),
+        (
+            [pot_top_up("x", SAVINGS, 250.0, "Rainy"), pot_top_up("y", LOAN, 250.0, "Rainy")],
+            "two arrivals fit, so it is a guess",
+        ),
+        (
+            [txn("x", SAVINGS, NZ_MIDNIGHT, 250.0, "Deposit Rainy", meta={"reference": "Rainy"})],
+            "the arriving row is not written as an automatic payment",
+        ),
+    ],
+)
+def test_a_pot_top_up_without_exactly_one_partner_stays_blank(others, why):
+    out = movement(
+        "ap_out", EVERYDAY, -250.0, "AP#10000002 TO A B SAMPLE", meta={"reference": "Rainy"}
+    )
+    rows = recovered([out, *others])
+
+    for row in rows.values():
+        assert row[COUNTERPARTY] == "" and row[SOURCE] == "", why
+
+
+def test_a_blank_reference_pairs_nothing():
+    """
+    Date and amount alone are not proof: two unrelated payments can share
+    both. Without the reference the rows stay blank and are counted as such.
+    """
+    rows = recovered(
+        [
+            movement("a", EVERYDAY, -250.0, "AP#10000002 TO A B SAMPLE"),
+            txn("b", SAVINGS, NZ_MIDNIGHT, 250.0, "Automatic Payment A B SAMPLE", type="CREDIT"),
+        ]
+    )
+
+    assert all(row[COUNTERPARTY] == "" and row[SOURCE] == "" for row in rows.values())
+    assert counterparty_summary(list(rows.values()))[AP_BLANK] == 2
+
+
 def test_what_akahu_supplied_is_never_overwritten():
     """
     A value from the bank outranks anything worked out from text - even when
@@ -393,6 +468,7 @@ def test_the_summary_counts_what_was_filled_and_what_was_not():
         FROM_AKAHU: 1,  # TRANSFER TO SAVINGS came with other_account
         FROM_TRANSFER_SUFFIX: 2,
         FROM_AP_PAIR: 2,
+        FROM_AP_REFERENCE: 2,
         TRANSFERS_BLANK: 1,  # TRANSFER FROM EVERYDAY: no suffix, nothing supplied
         AP_BLANK: 0,
     }
@@ -431,12 +507,12 @@ def test_the_other_side_is_seen_even_when_its_account_is_not_submitted(monkeypat
 
     rows = list(csv.DictReader(io.StringIO(sent["csv"])))
     assert {r["Account number"] for r in rows} == {"38-9014-0123456-00"}
-    assert {r[COUNTERPARTY] for r in rows} == {"38-9014-0123456-05"}
-    assert {r[SOURCE] for r in rows} == {FROM_TRANSFER_SUFFIX, FROM_AP_PAIR}
+    assert {r[COUNTERPARTY] for r in rows} == {"38-9014-0123456-05", "38-9014-0000000-01"}
+    assert {r[SOURCE] for r in rows} == {FROM_TRANSFER_SUFFIX, FROM_AP_PAIR, FROM_AP_REFERENCE}
     printed = capsys.readouterr().out
     assert (
-        "0 from Akahu, 1 by transfer suffix, 1 by AP# pairing; still blank: 0 transfers, 0 AP# rows"
-        in printed
+        "0 from Akahu, 1 by transfer suffix, 1 by AP# pairing, 1 by AP reference; "
+        "still blank: 0 transfers, 0 automatic payments" in printed
     )
 
 
