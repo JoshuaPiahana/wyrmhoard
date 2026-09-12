@@ -35,6 +35,34 @@ bank-branch-account-suffix number your bank prints in its own exports. That is
 what lets rows from a CSV you downloaded and rows from Akahu land on the same
 account rather than on two accounts that happen to share a name.
 
+## What it recovers
+
+Akahu names the other party's account on payments to other people and not on
+movements between the household's own accounts - the transfers and automatic
+payments that feed loans and sinking funds. That column is how Wyrmhoard
+proves a transfer is internal, so without it every such movement reads as
+spending. Measured on one Kiwibank ledger: 773 of 1,147 rows lost it, and
+categorisation coverage fell from 81.5% to 48.1%.
+
+The bank's own text still carries enough to put it back, and this producer
+does, under two rules and no others:
+
+- `TRANSFER TO … - 02` names the suffix of the household's own account the
+  money went to. Filled only when an account with that suffix, on the same
+  bank-branch-account prefix, is one Akahu listed.
+- `AP#12345678 TO …` on one account and `AP#12345678 FROM …` on another, same
+  day, amounts equal and opposite, are the two sides of one automatic
+  payment. Each is filled with the other's account. One side alone, or more
+  than one candidate for it, stays blank - never a guess.
+
+A value Akahu did supply is never overwritten. `Counterparty source` records
+which of the three put each value there, so the stored file always says what
+came from the bank and what this program worked out. Both runs report the
+counts, including how many transfers and `AP#` rows are still blank.
+
+This is knowledge about how one bank writes a description. It belongs here,
+in the producer for that feed, and not in the core.
+
 ## Why `--start` is required, every run
 
 A transaction's identity in Wyrmhoard is its account, date, description,
@@ -69,6 +97,7 @@ import csv
 import io
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -89,8 +118,11 @@ NZ = ZoneInfo("Pacific/Auckland")
 
 # The header words are Wyrmhoard's own hints (`HEADER_HINTS` in
 # api/wyrmhoard/ingest/bank_csv.py), spelt the way Kiwibank spells them.
-# Columns the sniffer does not know - Type, Merchant, Category - are kept in
-# the file because somebody will want them later, and ignored on import.
+# Columns the sniffer does not know - Type, Merchant, Category, Counterparty
+# source - are kept in the file because somebody will want them later, and
+# ignored on import. A new column's name must not contain any header hint:
+# the sniffer matches on substrings, so "Other party source" would be read
+# as a memo.
 COLUMNS = (
     "Date",
     "Account number",
@@ -102,9 +134,18 @@ COLUMNS = (
     "Code",
     "Reference",
     "Other party account number",
+    "Counterparty source",
     "Merchant",
     "Category",
 )
+
+COUNTERPARTY = "Other party account number"
+SOURCE = "Counterparty source"
+FROM_AKAHU = "akahu"
+FROM_TRANSFER_SUFFIX = "transfer suffix"
+FROM_AP_PAIR = "AP# pair"
+TRANSFERS_BLANK = "transfers still blank"
+AP_BLANK = "AP# rows still blank"
 
 Getter = Callable[[str, dict[str, str]], dict[str, Any]]
 
@@ -235,13 +276,13 @@ def _money(value: Any) -> str:
 def to_rows(
     transactions: list[dict[str, Any]],
     accounts: list[dict[str, Any]],
-    only: set[str] | None = None,
 ) -> list[dict[str, str]]:
     """
-    One CSV row per transaction, in Wyrmhoard's columns.
+    One CSV row per transaction, in Wyrmhoard's columns, for every account.
 
-    `only` restricts to accounts named by label, Akahu name or Akahu id, for a
-    household that connected everything and wants to import less than that.
+    Narrowing to some accounts is a separate step, `only_accounts`, and it
+    runs after `recover_counterparties` - the other side of a movement between
+    two of the household's accounts is a row on the account being left out.
     """
     by_id = {a["_id"]: a for a in accounts}
     rows: list[dict[str, str]] = []
@@ -252,14 +293,12 @@ def to_rows(
                 f"Transaction {t['_id']} belongs to account {t['_account']}, which "
                 "/accounts did not list. Refusing to guess which account it is."
             )
-        label = account_label(account)
-        if only and not ({label, account.get("name", ""), account["_id"]} & only):
-            continue
         meta = t.get("meta") or {}
+        other = meta.get("other_account") or ""
         rows.append(
             {
                 "Date": calendar_date(t["date"]),
-                "Account number": label,
+                "Account number": account_label(account),
                 "Description": (t.get("description") or "").strip(),
                 "Amount": _money(t["amount"]),
                 "Balance": _money(t.get("balance")),
@@ -267,13 +306,124 @@ def to_rows(
                 "Particulars": meta.get("particulars") or "",
                 "Code": meta.get("code") or "",
                 "Reference": meta.get("reference") or "",
-                "Other party account number": meta.get("other_account") or "",
+                COUNTERPARTY: other,
+                SOURCE: FROM_AKAHU if other else "",
                 "Merchant": (t.get("merchant") or {}).get("name") or "",
                 "Category": (t.get("category") or {}).get("name") or "",
             }
         )
-    rows.sort(key=lambda r: (r["Account number"], r["Date"]))
+    # Sorted on every column, not just account and date: a day with several
+    # rows on one account would otherwise come out in whatever order Akahu
+    # returned them, and daily runs overlap by design. The core orders by
+    # date and fingerprint on read, so the order within a day carries nothing.
+    rows.sort(key=lambda r: tuple(r[c] for c in COLUMNS))
     return rows
+
+
+def only_accounts(
+    rows: list[dict[str, str]], accounts: list[dict[str, Any]], only: set[str]
+) -> list[dict[str, str]]:
+    """
+    The rows on accounts named by label, Akahu name or Akahu id - for a
+    household that connected everything and wants to import less than that.
+    """
+    wanted = {
+        account_label(a) for a in accounts if {account_label(a), a.get("name", ""), a["_id"]} & only
+    }
+    return [r for r in rows if r["Account number"] in wanted]
+
+
+# --------------------------------------------------------------------------
+# Recovering the other side of the household's own movements
+# --------------------------------------------------------------------------
+# A bank account number as the bank prints it: bank-branch-account-suffix.
+_ACCOUNT_RE = re.compile(r"^(\d{2}-\d{4}-\d{7})-(\d{2,3})$")
+# Kiwibank writes a transfer between a customer's own accounts as
+# "TRANSFER TO <holder names> - <suffix>"; the suffix is the destination's.
+_TRANSFER_RE = re.compile(r"^TRANSFER (?:TO|FROM) .* - (\d{2,3})$", re.IGNORECASE)
+_ANY_TRANSFER_RE = re.compile(r"^TRANSFER (?:TO|FROM)\b", re.IGNORECASE)
+# An automatic payment carries its number on both sides, and only the
+# direction word differs.
+_AP_RE = re.compile(r"^AP#(\d+) (TO|FROM)\b", re.IGNORECASE)
+
+
+def recover_counterparties(rows: list[dict[str, str]], accounts: list[dict[str, Any]]) -> None:
+    """
+    Fill the other party's account on rows Akahu left blank, where the bank's
+    own text proves which of the household's accounts it is. See the module
+    docstring for the two rules; nothing else is inferred, and a value Akahu
+    supplied is never touched. Rows are changed in place so that the
+    `Counterparty source` column can say which rule did it.
+
+    Works on the rows for *every* account Akahu listed, because the other side
+    of an `AP#` is a row on a different account - one that `--account` may be
+    about to leave out of the submission.
+    """
+    own = {account_label(a) for a in accounts}
+    blank = [r for r in rows if not r[COUNTERPARTY]]
+
+    # Rule 1: the suffix in a transfer's text, on this account's own prefix.
+    for row in blank:
+        found = _TRANSFER_RE.match(row["Description"])
+        here = _ACCOUNT_RE.match(row["Account number"])
+        if not found or not here:
+            continue
+        candidate = f"{here.group(1)}-{found.group(1)}"
+        if candidate in own and candidate != row["Account number"]:
+            row[COUNTERPARTY] = candidate
+            row[SOURCE] = FROM_TRANSFER_SUFFIX
+
+    # Rule 2: both sides of one automatic payment. Same number, same day, the
+    # same money leaving one account and arriving in another. The direction
+    # word has to agree with the sign - "TO" pays out, "FROM" is paid in - or
+    # the row is not the shape this rule knows.
+    sides: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+    for row in blank:
+        found = _AP_RE.match(row["Description"])
+        if not found or row[COUNTERPARTY]:
+            continue
+        amount = float(row["Amount"])
+        paying_out = found.group(2).upper() == "TO"
+        if amount == 0 or paying_out != (amount < 0):
+            continue
+        key = (found.group(1), row["Date"], f"{abs(amount):.2f}")
+        sides.setdefault(key, []).append(row)
+    for pair in sides.values():
+        out = [r for r in pair if float(r["Amount"]) < 0]
+        into = [r for r in pair if float(r["Amount"]) > 0]
+        if len(out) != 1 or len(into) != 1:
+            continue
+        if out[0]["Account number"] == into[0]["Account number"]:
+            continue
+        out[0][COUNTERPARTY] = into[0]["Account number"]
+        into[0][COUNTERPARTY] = out[0]["Account number"]
+        out[0][SOURCE] = into[0][SOURCE] = FROM_AP_PAIR
+
+
+def counterparty_summary(rows: list[dict[str, str]]) -> dict[str, int]:
+    """
+    Where the other party's account came from, and what is still blank.
+
+    The two "still blank" counts are the honest ones - a transfer whose text
+    carries no suffix, an `AP#` whose other side was not in the feed - and
+    they are printed so that a rule quietly failing to fire is noticed rather
+    than read as spending.
+    """
+    counts = {
+        FROM_AKAHU: 0,
+        FROM_TRANSFER_SUFFIX: 0,
+        FROM_AP_PAIR: 0,
+        TRANSFERS_BLANK: 0,
+        AP_BLANK: 0,
+    }
+    for row in rows:
+        if row[SOURCE]:
+            counts[row[SOURCE]] += 1
+        elif _ANY_TRANSFER_RE.match(row["Description"]):
+            counts[TRANSFERS_BLANK] += 1
+        elif _AP_RE.match(row["Description"]):
+            counts[AP_BLANK] += 1
+    return counts
 
 
 def to_csv(rows: list[dict[str, str]]) -> str:
@@ -379,7 +529,12 @@ def main(argv: list[str] | None = None) -> int:
     get = akahu_getter(*tokens_from_env())
     accounts = fetch_accounts(get)
     transactions = fetch_transactions(get, args.start, end)
-    rows = to_rows(transactions, accounts, only=set(args.account) or None)
+    # Every account first, then narrow: the other side of an AP# may be on an
+    # account that is not being submitted, and it still has to be seen.
+    rows = to_rows(transactions, accounts)
+    recover_counterparties(rows, accounts)
+    if args.account:
+        rows = only_accounts(rows, accounts, set(args.account))
 
     print(f"Akahu lists {len(accounts)} accounts:")
     for account in accounts:
@@ -402,6 +557,13 @@ def main(argv: list[str] | None = None) -> int:
         f"(asked {args.start} to {end}) across "
         f"{len({r['Account number'] for r in rows})} accounts, net {net:+.2f}"
     )
+    found = counterparty_summary(rows)
+    print(
+        f"  other party's account: {found[FROM_AKAHU]} from Akahu, "
+        f"{found[FROM_TRANSFER_SUFFIX]} by transfer suffix, "
+        f"{found[FROM_AP_PAIR]} by AP# pairing; still blank: "
+        f"{found[TRANSFERS_BLANK]} transfers, {found[AP_BLANK]} AP# rows"
+    )
 
     if args.dry_run:
         print("  first rows, with Akahu's own timestamp beside the date this will store:")
@@ -410,6 +572,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {calendar_date(t['date'])}  <- {t['date']}  "
                 f"{float(t['amount']):>10.2f}  {(t.get('description') or '')[:40]}"
             )
+        for rule in (FROM_TRANSFER_SUFFIX, FROM_AP_PAIR):
+            recovered = [r for r in rows if r[SOURCE] == rule]
+            if not recovered:
+                continue
+            print(f"  first rows whose other party this producer worked out by {rule}:")
+            for r in recovered[:4]:
+                print(
+                    f"  {r['Date']}  {r['Account number']}  {float(r['Amount']):>10.2f}  "
+                    f"{r['Description'][:40]:<40}  -> {r[COUNTERPARTY]}"
+                )
         return 0
 
     filename = f"akahu-{end.isoformat()}.csv"
