@@ -21,7 +21,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import akahu
 from akahu import (
     AP_BLANK,
     COUNTERPARTY,
@@ -34,6 +33,7 @@ from akahu import (
     calendar_date,
     counterparty_summary,
     fetch_transactions,
+    main,
     only_accounts,
     paginate,
     recover_counterparties,
@@ -420,14 +420,14 @@ def test_the_other_side_is_seen_even_when_its_account_is_not_submitted(monkeypat
         sent["csv"] = csv_text
         return {"report": {"rows_parsed": 2, "rows_seen": 2, "confidence": "high"}}
 
-    monkeypatch.setattr(akahu, "akahu_getter", fake_getter)
-    monkeypatch.setattr(akahu, "submit", fake_submit)
-    monkeypatch.setattr(akahu, "rows_new", lambda filename, api: 2)
+    monkeypatch.setattr("akahu.akahu_getter", fake_getter)
+    monkeypatch.setattr("akahu.submit", fake_submit)
+    monkeypatch.setattr("akahu.rows_new", lambda filename, api: 2)
     monkeypatch.setenv("AKAHU_APP_TOKEN", "app_token_test")
     monkeypatch.setenv("AKAHU_USER_TOKEN", "user_token_test")
 
     argv = ["--start", "2026-09-01", "--end", "2026-09-30", "--account", "38-9014-0123456-00"]
-    assert akahu.main(argv) == 0
+    assert main(argv) == 0
 
     rows = list(csv.DictReader(io.StringIO(sent["csv"])))
     assert {r["Account number"] for r in rows} == {"38-9014-0123456-00"}
