@@ -469,3 +469,36 @@ def test_an_upload_records_which_interface_submitted_it(client):
 
     logged = client.get("/imports").json()
     assert logged and logged[0]["producer"] == "human:dashboard"
+
+
+def test_a_program_can_say_it_submitted_the_file(client):
+    """
+    A producer that fetched a file from somewhere else must be able to say so.
+
+    `tool:akahu` and `human:dashboard` are different claims - one means the
+    data passed through a third party - and the ledger keeps that difference
+    forever. Until this, everything through /import was logged as the
+    dashboard, which would have made an open-banking bridge invisible.
+    """
+    res = client.post(
+        "/import",
+        files={"file": ("akahu-2025-07-05.csv", SAMPLE_CSV, "text/csv")},
+        data={"producer": "tool:akahu"},
+    )
+    assert res.status_code == 200, res.text
+
+    logged = client.get("/imports").json()
+    assert logged and logged[0]["producer"] == "tool:akahu"
+
+
+def test_a_malformed_producer_name_is_refused_before_anything_is_written(client):
+    """The naming rule in docs/PRODUCERS.md applies at this door too."""
+    res = client.post(
+        "/import",
+        files={"file": ("kb.csv", SAMPLE_CSV, "text/csv")},
+        data={"producer": "akahu"},
+    )
+    assert res.status_code == 400
+    assert "kind" in res.json()["detail"]
+    assert client.get("/imports").json() == []
+    assert client.get("/health").json()["stats"]["transactions"] == 0

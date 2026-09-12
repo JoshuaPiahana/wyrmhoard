@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -32,6 +32,7 @@ from . import (
     documents,
     facts,
     properties,
+    provenance,
     taxonomy,
 )
 from .analysis import cashflow, mortgage, recurring, series
@@ -475,7 +476,10 @@ async def preview(file: UploadFile = File(...)) -> dict[str, Any]:
 
 
 @app.post("/import")
-async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
+async def import_csv(
+    file: UploadFile = File(...),
+    producer: str = Form("human:dashboard"),
+) -> dict[str, Any]:
     """
     One drop zone for everything the household has.
 
@@ -483,7 +487,17 @@ async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
     and that decision now lives in one place - `ingest.ingest_document` - so
     the browser, the CLI and an agent all reach the same conclusion about the
     same file.
+
+    `producer` defaults to the dashboard because that is who has always used
+    this endpoint. A program submitting a file it fetched from somewhere else
+    must say so: `tool:akahu` and `human:dashboard` are different claims, and
+    the ledger keeps the difference forever. See docs/PRODUCERS.md.
     """
+    try:
+        producer = provenance.check_producer(producer)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     raw = await file.read()
     name = safe_upload_name(file.filename)
 
@@ -501,7 +515,7 @@ async def import_csv(file: UploadFile = File(...)) -> dict[str, Any]:
     dest.write_bytes(raw)
 
     try:
-        result = ingest_document(dest, producer="human:dashboard")
+        result = ingest_document(dest, producer=producer)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 

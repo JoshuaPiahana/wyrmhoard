@@ -39,6 +39,12 @@ the shop that made it.
 
 A document that does not balance is refused, and the message says by how much.
 
+**Bank transactions take the other door.** They are a CSV, so a producer that
+fetches them - `akahu/` is the working example - emits the columns the core's
+sniffer already reads and `POST /import`s the file with a `producer` form
+field. Same provenance rule, different shape, and no schema change to make a
+bank feed fit.
+
 See `docs/PRODUCERS.md` for the six provenance fields and the naming rules, and
 `producers/woolworths_online/` for a working example.
 
