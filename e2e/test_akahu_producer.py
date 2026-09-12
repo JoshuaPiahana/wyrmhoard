@@ -28,13 +28,27 @@ if not (PRODUCERS / "akahu" / "akahu.py").exists():
     )
 sys.path.insert(0, str(PRODUCERS / "akahu"))
 
-from akahu import PRODUCER, multipart, submit, to_csv, to_rows  # noqa: E402
+from akahu import (  # noqa: E402
+    PRODUCER,
+    multipart,
+    recover_counterparties,
+    submit,
+    to_csv,
+    to_rows,
+)
 
 ACCOUNT = {
     "_id": "acc_e2e",
     "name": "Everyday",
     "formatted_account": "38-9014-0123456-00",
     "type": "CHECKING",
+    "status": "ACTIVE",
+}
+LOAN = {
+    "_id": "acc_e2e_loan",
+    "name": "Home loan",
+    "formatted_account": "38-9014-0123456-05",
+    "type": "LOAN",
     "status": "ACTIVE",
 }
 TRANSACTIONS = [
@@ -66,6 +80,27 @@ TRANSACTIONS = [
         "type": "TRANSFER",
         "meta": {"particulars": "rainy day", "other_account": "38-9014-0000000-01"},
     },
+    # An automatic payment to the household's own loan, the shape Akahu leaves
+    # without `other_account`. The producer pairs the two sides; the core
+    # must then read what it wrote back exactly as it reads the bank's own.
+    {
+        "_id": "trans_e2e_4",
+        "_account": "acc_e2e",
+        "date": "2026-09-04T00:00:00.000Z",
+        "description": "AP#10000001 TO A B SAMPLE",
+        "amount": -23.68,
+        "balance": 3720.92,
+        "type": "TRANSFER",
+    },
+    {
+        "_id": "trans_e2e_5",
+        "_account": "acc_e2e_loan",
+        "date": "2026-09-04T00:00:00.000Z",
+        "description": "AP#10000001 FROM A B SAMPLE",
+        "amount": 23.68,
+        "balance": -1000.0,
+        "type": "TRANSFER",
+    },
 ]
 FILENAME = "akahu-e2e-contract.csv"
 
@@ -90,14 +125,18 @@ def api(base_url: str) -> str:
 
 @pytest.fixture
 def csv_text() -> str:
-    return to_csv(to_rows(TRANSACTIONS, [ACCOUNT]))
+    rows = to_rows(TRANSACTIONS, [ACCOUNT, LOAN])
+    recover_counterparties(rows, [ACCOUNT, LOAN])
+    return to_csv(rows)
 
 
 def test_the_sniffer_reads_every_column_that_matters(api: str, csv_text: str):
     """
     /preview parses without saving, which is exactly the question: signed
     amounts, the account number, the balance, and the other party's account
-    as the counterparty - the field that proves a transfer is internal.
+    as the counterparty - the field that proves a transfer is internal -
+    whether the bank supplied it or the producer worked it out. The extra
+    `Counterparty source` column must be ignored, not mistaken for a memo.
     """
     body, content_type = multipart(csv_text, FILENAME)
     result = _post(f"{api}/preview", body, content_type)
@@ -117,6 +156,11 @@ def test_the_sniffer_reads_every_column_that_matters(api: str, csv_text: str):
     assert transfer["date"] == "2026-09-03"
     assert "rainy day" in transfer["match_text"]
     assert by_memo["SALARY ACME LTD"]["amount"] == 2380.0
+
+    paid = by_memo["AP#10000001 TO A B SAMPLE"]
+    assert paid["counterparty"] == "38-9014-0123456-05", "recovered by the producer"
+    assert by_memo["AP#10000001 FROM A B SAMPLE"]["counterparty"] == "38-9014-0123456-00"
+    assert "AP# pair" not in paid["match_text"], "the source column is not text to match on"
 
 
 def test_a_real_submission_is_logged_as_this_producer_and_never_doubled(api: str, csv_text: str):

@@ -48,8 +48,9 @@ python akahu.py --start 2026-09-01 --dry-run
 ```
 
 It lists every account Akahu can see, then the transactions it would submit,
-with Akahu's own timestamp beside the date that would be stored. Two things
-are worth your eyes before the first real run:
+with Akahu's own timestamp beside the date that would be stored, then the
+first rows whose other party this producer worked out rather than the bank.
+Three things are worth your eyes before the first real run:
 
 - **The account numbers.** They should match the accounts already on the
   dashboard exactly, suffix included. If they do not, the same account will
@@ -60,6 +61,10 @@ are worth your eyes before the first real run:
   see "Dates" in the module docstring for the rule. Verified on a week of
   real Kiwibank data. A different bank may do it differently, which is why
   the dry run prints both stamps.
+- **The recovered transfers.** Each printed row names the account this
+  producer decided the money went to or came from. If one is wrong, do not
+  run - the rules are in "What it works out for itself" below, and a bank
+  that writes its descriptions differently needs its own.
 
 Then:
 
@@ -141,10 +146,8 @@ read by Wyrmhoard's sniffer in `e2e/test_akahu_producer.py`.
   ledger that was 773 of the 1,147 rows the export had it on. That field is
   how the core proves a transfer is internal rather than guessing from the
   word "transfer", so without it every movement between pots read as
-  spending, and categorisation coverage fell from 81.5% to 48.1%. The suffix
-  survives in Akahu's description text and both sides of every `AP#` are in
-  the feed, so this is recoverable by this producer. **Not yet done** - see
-  the open question at the end.
+  spending, and categorisation coverage fell from 81.5% to 48.1%. **This
+  producer puts it back** from the bank's own text - see the next section.
 - **Zero-dollar informational rows on loan accounts.** `OFFSET Benefit of
   $12.18` and `Rate 6.500% (V) loaded` are rows in the bank's export and
   absent from Akahu. Loan inference reads the first to work out an offset
@@ -160,3 +163,54 @@ measured, and restored from backup the same afternoon.
 
 Not yet exercised: a bank other than Kiwibank, a credit card, or a KiwiSaver
 account.
+
+## What it works out for itself
+
+Two rules, for the two shapes Kiwibank writes when money moves between a
+customer's own accounts. Nothing else is inferred, and a value Akahu did
+supply is never overwritten.
+
+**A transfer names its destination's suffix.** `TRANSFER TO J SAMPLE - 02`
+on account `…-00` went to `…-02`, and the `TRANSFER FROM J SAMPLE - 00` on
+`…-02` is the same money arriving. The rule fills the other party only when
+an account with that suffix, on the *same* bank-branch-account prefix, is one
+Akahu listed. `- 07` when there is no `-07` stays blank; so does a transfer
+whose text has no suffix at all.
+
+**An automatic payment appears on both sides.** `AP#12345678 TO J SAMPLE`
+for -$23.68 on one account and `AP#12345678 FROM J SAMPLE` for +$23.68 on
+another, the same day, are one payment. Each row is filled with the other's
+account. The pairing has to be exact - same number, same day, amounts equal
+and opposite, `TO` on the paying side - and exactly one candidate on each
+side. One side alone (the other account not connected to Akahu, or the
+payee somebody else) stays blank. Two candidates stay blank. It never
+guesses.
+
+Every row carries a `Counterparty source` column saying which of `akahu`,
+`transfer suffix` or `AP# pair` put the value there, so the file in
+`data/inbox/` always distinguishes what the bank said from what this program
+worked out. Wyrmhoard ignores the column. The run reports the counts either
+way:
+
+```
+  other party's account: 268 from Akahu, 256 by transfer suffix, 520 by AP# pairing; still blank: 0 transfers, 12 AP# rows
+```
+
+The "still blank" numbers are the ones to read. A transfer or `AP#` row with
+no other party will be categorised from its text like any other row, which
+for a movement between your own pots usually means it reads as spending.
+The dry run also prints the first few rows each rule filled, next to the
+account it chose, so they can be checked against internet banking before
+anything is stored.
+
+Two things this does not do. It does not go back and fill rows already in
+the ledger: a row's identity is its account, date, description, amount and
+balance, so a row imported before this existed is skipped as already stored,
+other party and all. And the pairing looks across *every* account Akahu
+listed, not just the ones `--account` names - the loan's side of an `AP#` is
+what proves the everyday account's side is internal, and it is found before
+the loan is left out of the submission.
+
+This is knowledge about one bank's descriptions and lives here for that
+reason. A different bank writes different text, and the rules will simply not
+fire - the counts will say so.
