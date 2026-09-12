@@ -45,6 +45,12 @@ target-version = "py311"
 src = ["api"]
 extend-exclude = ["data", "reports"]
 
+# Producers run on whatever Python the household has, not the container's.
+# The WSL that runs the Akahu bridge is 3.10, and ruff once "modernised" a
+# producer to `datetime.UTC` - which does not exist there.
+[tool.ruff.per-file-target-version]
+"producers/**" = "py310"
+
 [tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors
