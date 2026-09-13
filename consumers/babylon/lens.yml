@@ -1,0 +1,39 @@
+# ===========================================================================
+# lens.yml - the numbers this lens fixes, and its reading of the household's
+# own groups.
+#
+# Whose opinion: George S. Clason's, from "The Richest Man in Babylon" (1926),
+# as this lens reads it. Wyrmhoard has no view on any of it. A household that
+# disagrees edits this file or picks another lens; the figures underneath do
+# not change.
+# ===========================================================================
+
+# "For every ten coins thou placest within thy purse take out for use but
+# nine." The one rule everything else in the book hangs from.
+tenth: 0.10
+
+# How many pay cycles a reading covers. Thirteen fortnights is half a year:
+# long enough to hold one of everything lumpy, short enough that "now" still
+# means now. The thirteen before it are "before", for anything that compares.
+window_fortnights: 13
+
+# "A part of all you EARN is yours to keep." Money that arrived without being
+# earned - a gift, help from family - is stated separately and plainly, never
+# hidden and never counted as earnings. The keys are the household's own
+# income categories; one it does not use is simply never matched.
+earnings_exclude:
+  - gift_received
+
+# Babylon budgets for three things inside the nine-tenths: necessities,
+# enjoyments, and worthwhile desires. This maps the household's own group
+# keys onto the first two (the book does not separate the last two by
+# arithmetic, and neither does this lens). A group key not named here is
+# reported as unplaced - counted, named, never dropped - and a household
+# that renamed its groups will see every one of them there until it edits
+# this list.
+purposes:
+  necessities: [essential, commitment, sinking]
+  enjoyments: [discretionary]
+
+# How many shops to name per purpose before folding the rest into one row.
+merchants_named: 8

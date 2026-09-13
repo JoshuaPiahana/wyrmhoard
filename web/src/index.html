@@ -31,6 +31,7 @@
     <button role="tab" data-tab="overview"     aria-selected="true">Overview</button>
     <button role="tab" data-tab="spending"     aria-selected="false">Spending</button>
     <button role="tab" data-tab="repeats"      aria-selected="false">Repeats</button>
+    <button role="tab" data-tab="lens"         aria-selected="false">Lens</button>
     <button role="tab" data-tab="notes"        aria-selected="false">Notes</button>
     <button role="tab" data-tab="data"         aria-selected="false">Data</button>
   </nav>
@@ -184,6 +185,23 @@
           <tbody data-list="recurring"></tbody>
         </table>
       </div>
+    </section>
+  </div>
+  <!-- ================= LENS =================
+       Renders whatever lens JSON is present in reports/lenses/. Nothing in
+       this panel or in app.js names a lens: a lens is a consumer holding one
+       philosophy, and the household picks which to hear. See
+       consumers/README.md for the contract a lens emits. -->
+  <div class="panel" data-panel="lens" hidden>
+    <section>
+      <div class="section-head">
+        <h2>Through a lens</h2>
+        <span class="hint">Wyrmhoard computes and holds no opinion. A lens holds one, and says what its philosophy would say about these figures.</span>
+        <label class="lens-pick">Lens
+          <select id="lens-pick" data-list="lenspicker" aria-label="Which lens to read through"></select>
+        </label>
+      </div>
+      <div data-list="lens"></div>
     </section>
   </div>
   <!-- ================= NOTES ================= -->

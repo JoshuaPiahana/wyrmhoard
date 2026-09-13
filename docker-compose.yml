@@ -41,6 +41,9 @@ services:
     volumes:
       - ./web/src:/usr/share/nginx/html:ro
       - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Lens readings, written by `./hoard lens <name>`. reports/ is gitignored
+      # because these files hold the household's real numbers.
+      - ./reports/lenses:/lenses:ro
     depends_on:
       - api
     restart: unless-stopped
@@ -122,6 +125,9 @@ services:
       # whether it understands what a producer emits - the one question a
       # producer's own tests may not answer, because they may not import the core.
       - ./producers:/producers:ro
+      # Same reason, for e2e/test_lens.py: a lens is only proven when the
+      # live server answers what it asks for.
+      - ./consumers:/consumers:ro
     environment:
       WYRMHOARD_E2E_URL: http://web
     depends_on:

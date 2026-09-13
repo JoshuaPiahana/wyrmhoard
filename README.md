@@ -164,9 +164,16 @@ Deliberately two commands. A routine with more steps does not survive a busy
 month.
 
 ```bash
-./hoard ingest      # import whatever is in data/inbox/
-./hoard summary     # headline numbers in the terminal
+./hoard ingest          # import whatever is in data/inbox/
+./hoard lens babylon    # read the figures through a lens; it shows on the Lens tab
 ```
+
+A lens is a consumer that holds one named philosophy and says what it would
+say about your figures. Wyrmhoard itself holds no opinion, so the reading is
+a file it never touches (`reports/lenses/`, gitignored), and the Lens tab
+lists whichever lenses you have run and lets you switch. `babylon` is the
+first - the seven cures from *The Richest Man in Babylon* - and
+`consumers/README.md` says how to write another.
 
 Then add a line on the **Notes** tab saying what happened — what you changed,
 what broke, what the unusual bill was. The numbers are already in the ledger
@@ -193,6 +200,7 @@ have to track what you already loaded.
 | `./hoard note "..."` | Write down what happened this month |
 | `./hoard notes` | What you have said about past months |
 | `./hoard loan` | Mortgage payoff scenarios |
+| `./hoard lens <name>` | Read the figures through a lens; shows on the Lens tab |
 | `./hoard reset --yes` | Delete the ledger (your CSV files are untouched) |
 | `./hoard lint` / `test` / `e2e` / `check` | The quality gates |
 | `./hoard logs` | Tail the API logs |

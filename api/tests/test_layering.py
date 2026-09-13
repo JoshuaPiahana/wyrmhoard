@@ -238,7 +238,7 @@ def test_there_are_outer_programs_to_check():
     if _repo_root() is None:
         pytest.skip("repo root not reachable from here; this guard runs in CI")
     stems = {p.stem for p in _outer_programs()}
-    assert {"woolworths_online", "grocery_health"} <= stems
+    assert {"woolworths_online", "grocery_health", "babylon"} <= stems
 
 
 @pytest.mark.parametrize("path", _outer_programs(), ids=lambda p: p.stem)
@@ -258,4 +258,45 @@ def test_producers_and_consumers_never_import_the_core(path: Path):
         f"{path.relative_to(_repo_root())} imports the core directly. Producers "
         "and consumers talk to Wyrmhoard over HTTP and nothing else - that is "
         "what makes them replaceable, and what lets them be written in any language."
+    )
+
+
+# ---------------------------------------------------------------------------
+# The dashboard renders lenses; it does not know any
+# ---------------------------------------------------------------------------
+def _lenses() -> list[str]:
+    root = _repo_root()
+    if root is None:
+        return []
+    return sorted(p.parent.name for p in (root / "consumers").glob("*/lens.yml"))
+
+
+def test_there_is_a_lens_to_check():
+    if _repo_root() is None:
+        pytest.skip("repo root not reachable from here; this guard runs in CI")
+    assert "babylon" in _lenses()
+
+
+@pytest.mark.parametrize("lens", _lenses())
+def test_the_dashboard_knows_no_lens_by_name(lens: str):
+    """
+    A lens is a consumer holding one philosophy, and the household picks which
+    to hear. The Lens tab renders whatever emits the contract in
+    consumers/README.md, listed from a directory, chosen from a dropdown.
+
+    The first `if (lens === "babylon")` in the dashboard ends that: the next
+    lens then needs a dashboard change, and the one after needs a release.
+    So the name of every lens is banned from web/src/ outright - markup, script
+    and styles - and this test names the offender.
+    """
+    root = _repo_root()
+    assert root is not None
+    hits = [
+        path.relative_to(root).as_posix()
+        for path in sorted((root / "web" / "src").rglob("*"))
+        if path.is_file() and lens.lower() in path.read_text(encoding="utf-8").lower()
+    ]
+    assert not hits, (
+        f"web/src/ mentions the lens '{lens}' in {hits}. The dashboard renders "
+        "any lens that emits the contract; it must never know one by name."
     )

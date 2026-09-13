@@ -170,7 +170,216 @@ function groupRows() {
     }));
 }
 
+
+/* ---------- lenses -----------------------------------------------------
+
+   A lens is a consumer that holds one named philosophy, reads the API, and
+   writes reports/lenses/<name>.json in the shape consumers/README.md sets
+   out. nginx lists that directory at /lenses/. Nothing below knows any lens
+   by name - a guard test in api/tests/test_layering.py makes sure of it -
+   because the point is that the household chooses whose opinion to hear,
+   and a second lens is a second file, not a second tab.
+   ---------------------------------------------------------------------- */
+
+const LENSES = '/lenses/';
+
+async function listLenses() {
+  const res = await fetch(LENSES);
+  if (!res.ok) return [];
+  const entries = await res.json();   // nginx autoindex_format json
+  return entries
+    .filter(e => e.type === 'file' && e.name.endsWith('.json'))
+    .map(e => e.name.replace(/\.json$/, ''))
+    .sort();
+}
+
+async function loadLens(name) {
+  const res = await fetch(`${LENSES}${encodeURIComponent(name)}.json`);
+  if (!res.ok) throw new Error(`lens ${name} → ${res.status}`);
+  return res.json();
+}
+
+async function chooseLens(name) {
+  state.lensName = name || null;
+  state.lens = null;
+  state.lensError = null;
+  if (name) {
+    try { state.lens = await loadLens(name); } catch (e) { state.lensError = e.message; }
+  }
+  try { localStorage.setItem('wyrmhoard.lens', name || ''); } catch { /* private mode */ }
+  renderLists();
+}
+
+/**
+ * What the Lens tab should hold after a refresh. Lenses are optional and
+ * live outside the API, so a missing directory or a malformed file must
+ * never take the rest of the dashboard down with it.
+ */
+async function lensState(current) {
+  try {
+    const lenses = await listLenses();
+    const lensName = current && lenses.includes(current) ? current : rememberedLens(lenses);
+    return { lenses, lensName, lens: lensName ? await loadLens(lensName) : null, lensError: null };
+  } catch (e) {
+    return { lenses: [], lensName: null, lens: null, lensError: e.message };
+  }
+}
+
+/** The lens picked last time, if it is still present; else the first one. */
+function rememberedLens(names) {
+  let wanted = '';
+  try { wanted = localStorage.getItem('wyrmhoard.lens') || ''; } catch { /* ignore */ }
+  if (wanted && names.includes(wanted)) return wanted;
+  return names[0] || null;
+}
+
+/** A figure's value, formatted by the unit it declares. */
+function figureValue(fig, currency) {
+  if (!fig || fig.value === null || fig.value === undefined) return '—';
+  if (fig.unit === currency) return money(fig.value, 0);
+  if (fig.unit === 'ratio') return `${(Number(fig.value) * 100).toFixed(0)}%`;
+  if (fig.unit === 'count') return FORMATTERS.int(fig.value);
+  return `${esc(fig.value)} ${esc(fig.unit)}`;
+}
+
+function cellValue(v, unit, currency) {
+  if (v === null || v === undefined) return '—';
+  if (unit === currency) return money(v, 0);
+  if (unit === 'count') return FORMATTERS.int(v);
+  return esc(v);
+}
+
+const humanise = key => String(key).replace(/_/g, ' ');
+
+/** Bars per period for each row, with an optional target line. Inline SVG, no library. */
+function lensChart(s) {
+  const rows = s?.rows || [];
+  const periods = s?.periods || [];
+  const n = periods.length;
+  if (!n || !rows.length) return '';
+  const target = s.target && typeof s.target.value === 'number' ? s.target.value : null;
+  const values = rows.flatMap(r => r.totals || []);
+  const hi = Math.max(0, ...values, target ?? 0);
+  const lo = Math.min(0, ...values);
+  const W = 640, H = 180, padL = 8, padR = 8, padT = 14, padB = 22;
+  const y = v => padT + ((hi - v) / ((hi - lo) || 1)) * (H - padT - padB);
+  const slot = (W - padL - padR) / n;
+  const bw = slot / (rows.length + 0.6);
+  let out = '';
+  rows.forEach((r, j) => (r.totals || []).forEach((v, i) => {
+    const x = padL + i * slot + (j + 0.3) * bw;
+    const y0 = y(0), y1 = y(v);
+    out += `<rect class="s${j}" x="${x.toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" ` +
+           `width="${(bw * 0.9).toFixed(1)}" height="${Math.max(1, Math.abs(y0 - y1)).toFixed(1)}">` +
+           `<title>${esc(periods[i])} — ${esc(r.label)} ${money(v)}</title></rect>`;
+  }));
+  out += `<line class="zero" x1="${padL}" x2="${W - padR}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>`;
+  if (target !== null) {
+    out += `<line class="target" x1="${padL}" x2="${W - padR}" y1="${y(target).toFixed(1)}" y2="${y(target).toFixed(1)}"/>` +
+           `<text class="lab" x="${W - padR}" y="${(y(target) - 4).toFixed(1)}" text-anchor="end">${esc(s.target.label || 'target')} ${money(target)}</text>`;
+  }
+  out += `<text class="lab" x="${padL}" y="${H - 6}">${esc(periods[0])}</text>` +
+         `<text class="lab" x="${W - padR}" y="${H - 6}" text-anchor="end">${esc(periods[n - 1])}</text>`;
+  const legend = rows.map((r, j) => `<span><i class="dot s${j}"></i>${esc(r.label)}</span>`).join('');
+  return `<figure class="lens-chart">
+    ${s.title ? `<figcaption>${esc(s.title)}</figcaption>` : ''}
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(s.title || 'chart')}">${out}</svg>
+    <div class="lens-legend">${legend}${target !== null ? `<span><i class="dash"></i>${esc(s.target.label || 'target')}</span>` : ''}</div>
+  </figure>`;
+}
+
+function lensTable(t, currency) {
+  const cols = t.columns || [];
+  const units = t.units || [];
+  const rows = t.rows || [];
+  if (!rows.length) return '';
+  const cls = i => (units[i] && units[i] !== 'text' ? 'n' : '');
+  return `<div class="card tablewrap lens-table" tabindex="0">
+    ${t.title ? `<h4>${esc(t.title)}</h4>` : ''}
+    <table>
+      <thead><tr>${cols.map((c, i) => `<th class="${cls(i)}">${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr>${r.map((v, i) =>
+        `<td class="${cls(i)}">${cellValue(v, units[i], currency)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+function readingCard(r, currency) {
+  const figures = Object.entries(r.figures || {});
+  const asks = Object.entries(r.principle_asks || {});
+  const body = r.available === false
+    ? `<p class="muted">${esc(r.reading || 'Nothing to read yet.')}</p>`
+    : `
+      <p class="reading-text">${esc(r.reading || '')}</p>
+      ${(r.options || []).length ? `<ul class="options">${r.options.map(o => `<li>${esc(o)}</li>`).join('')}</ul>` : ''}
+      ${lensChart(r.series)}
+      ${(r.tables || []).map(t => lensTable(t, currency)).join('')}
+      ${figures.length ? `<dl class="figures">${figures.map(([k, f]) => `
+        <div title="${esc(f.basis || '')}${f.source ? ` · ${esc(f.source)}` : ''}">
+          <dt>${esc(humanise(k))}</dt><dd>${figureValue(f, currency)}</dd>
+        </div>`).join('')}</dl>` : ''}
+      ${asks.length || r.gap ? `<p class="asks">${asks.map(([k, v]) =>
+        `<span><b>asks</b> ${esc(humanise(k))} ${typeof v === 'object' ? figureValue(v, currency) : esc(v)}</span>`).join('')}
+        ${r.gap ? `<span><b>gap</b> ${figureValue(r.gap, currency)}${r.gap.basis ? ` <span class="muted">— ${esc(r.gap.basis)}</span>` : ''}</span>` : ''}</p>` : ''}
+    `;
+  return `<article class="reading card">
+    <div class="reading-head">
+      ${r.cure !== undefined ? `<span class="num">${esc(r.cure)}</span>` : ''}
+      <h3>${esc(r.name || '')}</h3>
+    </div>
+    ${r.principle ? `<p class="principle">${esc(r.principle)}</p>` : ''}
+    ${body}
+    ${(r.caveats || []).length ? `<ul class="caveats muted">${r.caveats.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+  </article>`;
+}
+
+function noLensYet() {
+  return `<div class="note info">
+    <b>No lens has been run yet.</b> A lens reads these figures through one named
+    philosophy and says what it would say — the number, then the move it would make.
+    Each one is a directory under <code>consumers/</code> with a <code>lens.yml</code>;
+    run it with <code>./hoard lens &lt;name&gt;</code> and it appears here. Nothing
+    leaves this machine: the reading is a file in <code>reports/lenses/</code>.
+  </div>`;
+}
 const RENDER = {
+
+  lenspicker: el => {
+    const names = state.lenses || [];
+    el.innerHTML = names.map(n =>
+      `<option value="${esc(n)}"${n === state.lensName ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    el.disabled = names.length === 0;
+  },
+
+  lens: el => {
+    if (!(state.lenses || []).length) { el.innerHTML = noLensYet(); return; }
+    if (state.lensError) {
+      el.innerHTML = `<div class="note bad"><b>Could not read that lens.</b> ${esc(state.lensError)}</div>`;
+      return;
+    }
+    const L = state.lens;
+    if (!L) { el.innerHTML = '<p class="muted">Choose a lens.</p>'; return; }
+    const currency = L.unit || 'NZD';
+    const w = L.window || {};
+    const fd = FORMATTERS.date;
+    el.innerHTML = `
+      <div class="lens-head">
+        <h2>${esc(L.title || L.lens)}</h2>
+        ${L.philosophy ? `<p>${esc(L.philosophy)}</p>` : ''}
+        <p class="muted lens-when">
+          Read ${fd(L.generated_at)} from a ledger ending ${fd(L.ledger_ends)}
+          ${w.complete_periods !== undefined ? ` · ${esc(w.complete_periods)} complete ${esc(w.period || 'period')}s, ${fd(w.from)} to ${fd(w.to)}` : ''}
+          ${L.refresh ? ` · refresh with <code>${esc(L.refresh)}</code>` : ''}
+        </p>
+      </div>
+      ${(L.readings || []).map(r => readingCard(r, currency)).join('')}
+      ${(L.unplaced || []).length ? `<div class="note warn"><b>Not placed by this lens:</b> ${
+        L.unplaced.map(u => `${esc(u.group)} ${money(u.total)}`).join(', ')
+      }. Counted, never dropped — the lens's own file says where it puts each group.</div>` : ''}
+      ${(L.cannot_see || []).length ? `<div class="note info"><b>What this reading cannot see</b><ul class="cannot">${
+        L.cannot_see.map(c => `<li>${esc(c)}</li>`).join('')
+      }</ul></div>` : ''}`;
+  },
 
   groupbar: el => {
     el.innerHTML = groupRows()
@@ -688,6 +897,8 @@ async function refresh() {
     : '';
   RULES = rules;
 
+  Object.assign(state, await lensState(state.lensName));
+
   applyBindings();
   renderLists();
   renderBanners();
@@ -735,6 +946,8 @@ function wire() {
     b.addEventListener('click', () => showTab(b.dataset.tab)));
   $$('[data-goto]').forEach(b =>
     b.addEventListener('click', () => showTab(b.dataset.goto)));
+
+  $('#lens-pick').addEventListener('change', e => chooseLens(e.target.value));
 
   const drop = $('#drop'), input = $('#file');
   drop.addEventListener('click', () => input.click());
