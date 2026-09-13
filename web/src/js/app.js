@@ -246,6 +246,7 @@ function cellValue(v, unit, currency) {
   if (v === null || v === undefined) return '—';
   if (unit === currency) return money(v, 0);
   if (unit === 'count') return FORMATTERS.int(v);
+  if (unit === 'percent') return `${Number(v).toFixed(2)}%`;
   return esc(v);
 }
 

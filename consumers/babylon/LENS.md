@@ -13,8 +13,7 @@ and the surest increase is in the ability to earn.
 This file is the lens in prose. It is written for a reader who cannot ask a
 follow-up question - an agent driving Wyrmhoard over MCP, or a person with
 the API in front of them - so that the lens can be applied without running
-`babylon.py`. The program computes the first two cures today; the other
-five are stated here and follow.
+`babylon.py`, which computes all seven.
 
 Two rules hold for every cure. The number, then what Babylon asks, then the
 move it would make - never a verdict on the household, and never shame,
@@ -86,7 +85,9 @@ what is called necessary grows to meet income.
 
 **Reads:** `GET /accounts` for accounts in the `savings` role and their
 last balance; `GET /balances` for anything typed in; the income series for
-any category that is interest.
+the categories `lens.yml` names as interest - and if the household's rules
+have none of them, the lens says interest cannot be told apart rather than
+reporting none.
 
 **Says:** what the pots hold and what the ledger shows them earning. On
 most ledgers that is "nothing recorded", and the lens says so rather than
@@ -100,8 +101,12 @@ recommendation, and this project never makes one.
 > "Guard thy treasure from loss by investing only where thy principal is
 > safe."
 
-**Reads:** `GET /accounts` for liabilities; the spending series for
-`bnpl`, `loan_interest` and `bank_fees` over the window.
+**Reads:** `GET /accounts` for liabilities, less the loans `GET /properties`
+links to the home; the spending series for the categories `lens.yml` names
+as consumer credit (`bnpl`, `bank_fees` - not `loan_interest`, which on a
+mortgaged ledger is the roof's own line) over the window. With no home
+recorded it cannot tell the dwelling's loan from other debt, lists every
+liability, and says so instead of calling any of it consumer borrowing.
 
 **Says:** what is owed and on what; whether any interest or fee left the
 purse for consumer credit. A household with no card debt and no
@@ -112,23 +117,31 @@ praise, it is a fact worth knowing before the next decision.
 
 > "Own thy own home."
 
-**Reads:** `GET /loans` for each loan's balance, rate, and the interest and
-principal in each repayment.
+**Reads:** `GET /loans` for the home's loans - balance, the rate worked out
+from their own interest charges, repayment and cadence, and Wyrmhoard's
+projection.
 
-**Says:** interest and principal per fortnight, and the years to clear at
-the current pace. Whether to pay faster is a decision the other cures
-inform; this one only states the arithmetic.
+**Says:** interest and principal per fortnight (balance times rate over
+twenty-six; not the bank's line), and the years to clear at the current
+pace.
+
+**Asks:** once the tenth is kept, what one extra payment a fortnight buys -
+years sooner and interest saved, from the core's own projection. Babylon's
+order is the tenth first, then the roof.
 
 ## 6. Insure a future income
 
 > "Provide in advance for the needs of thy growing age and the protection
 > of thy family."
 
-**Reads:** `GET /payslips` for retirement contributions, employee and
-employer; `GET /recurring` for insurance.
+**Reads:** `GET /payslips` for the latest slip per job - retirement
+contributions, employee and employer, and gross; `GET /recurring` for
+payments in the categories `lens.yml` names as insurance.
 
-**Says:** contributions per fortnight and as a share of gross; what
-insurance is paid and how often.
+**Says:** both contributions on that pay and their share of its gross; what
+insurance is paid, how often and per year. A payslip's employee
+contribution is a deduction and arrives negative; both are read as money
+set aside.
 
 ## 7. Increase thy ability to earn
 

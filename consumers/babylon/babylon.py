@@ -59,14 +59,27 @@ REFRESH = "./hoard lens babylon"
 #: A spending group this lens has no purpose for. Reported, never dropped.
 UNPLACED = "unplaced"
 
-#: The seven cures, in the book's order. Only the first two are computed so
-#: far; the rest are stated in LENS.md and will follow.
+#: The seven cures, in the book's order. LENS.md says what each reads.
 CURES = {
     1: ("Start thy purse to fattening", "Of every ten coins earned, keep one."),
     2: (
         "Control thy expenditures",
         "Budget necessities and enjoyments inside the nine-tenths. What we call "
         "necessary grows to equal our income unless we protest.",
+    ),
+    3: ("Make thy gold multiply", "Put each coin to labouring, that it may reproduce its kind."),
+    4: (
+        "Guard thy treasures from loss",
+        "Borrowed gold is for what earns, never for what is consumed.",
+    ),
+    5: ("Make of thy dwelling a profitable investment", "Own thy own home."),
+    6: (
+        "Insure a future income",
+        "Provide in advance for the needs of thy growing age and the protection of thy family.",
+    ),
+    7: (
+        "Increase thy ability to earn",
+        "Cultivate thy own powers: study, and become more skilful.",
     ),
 }
 
@@ -80,6 +93,9 @@ def load_lens(path: Path = HERE / "lens.yml") -> dict[str, Any]:
     lens.setdefault("earnings_exclude", [])
     lens.setdefault("purposes", {})
     lens.setdefault("merchants_named", 8)
+    lens.setdefault("interest_categories", [])
+    lens.setdefault("credit_categories", [])
+    lens.setdefault("insurance_categories", [])
     return lens
 
 
@@ -96,7 +112,7 @@ def fetch(path: str, api: str) -> Any:
 def figure(value: float | None, unit: str, basis: str, source: str) -> dict[str, Any]:
     """A number that says what it is. Nothing in the output is a bare float."""
     return {
-        "value": None if value is None else round(value, 2),
+        "value": None if value is None else round(value, 4 if unit == "ratio" else 2),
         "unit": unit,
         "basis": basis,
         "source": source,
@@ -422,6 +438,510 @@ def _largest_merchants(merchants: dict[str, dict[str, Any]], unit: str) -> list[
     return out
 
 
+def _account_name(account: dict[str, Any]) -> str:
+    return str(account.get("label") or account.get("account") or "?")
+
+
+def _latest_payslips(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The most recent payslip per job, the way the core's income module picks them."""
+    latest: dict[str, dict[str, Any]] = {}
+    for slip in rows:
+        key = str(slip.get("employee_ref") or slip.get("employer") or slip.get("source_file"))
+        current = latest.get(key)
+        if current is None or str(slip.get("pay_date") or "") > str(current.get("pay_date") or ""):
+            latest[key] = slip
+    return sorted(latest.values(), key=lambda s: -(s.get("gross") or 0.0))
+
+
+def cure_three(
+    accounts: list[dict[str, Any]],
+    balances: list[dict[str, Any]],
+    income_rows: list[dict[str, Any]],
+    taxonomy: dict[str, Any],
+    now: list[int],
+    lens: dict[str, Any],
+    unit: str,
+    window: dict[str, Any],
+) -> dict[str, Any]:
+    """Put each coin to labouring."""
+    name, principle = CURES[3]
+    pots = [a for a in accounts if a.get("role") == "savings"]
+    typed = [b for b in balances if b.get("kind") == "asset"]
+    known = {c for g in taxonomy.get("groups", []) for c in g.get("categories", [])}
+    wanted = [c for c in lens["interest_categories"] if c in known]
+    interest_rows = [r for r in income_rows if r["category"] in set(wanted)]
+    interest = round(sum(slot_sums(interest_rows, now)), 2)
+    held = round(sum(float(a.get("last_balance") or 0.0) for a in pots), 2)
+    typed_total = round(sum(float(b.get("amount") or 0.0) for b in typed), 2)
+
+    if pots:
+        reading = f"The pots hold {money(held, unit)} across {len(pots)} account{'s' if len(pots) != 1 else ''}"
+        reading += f", and {money(typed_total, unit)} more is typed in." if typed else "."
+    elif typed:
+        reading = f"{money(typed_total, unit)} of assets is typed in; the ledger shows no savings account."
+    else:
+        reading = "The ledger shows no savings account and nothing typed in as an asset."
+    if not wanted:
+        reading += " Whether any of it earns, the ledger cannot say: the household's rules have no category for interest."
+    elif interest:
+        reading += f" Over the window {money(interest, unit)} arrived as interest."
+    else:
+        reading += " Over the window nothing arrived as interest - either it earns none, or the bank does not show it as its own line."
+
+    options = [
+        "Babylon asks that kept coins labour. Where they should is a decision this "
+        "lens does not make: it recommends no product, ever."
+    ]
+    if held <= 0 and not typed:
+        options = ["There is nothing to put to work yet. The first cure comes first."]
+
+    table_rows = [[_account_name(a), float(a.get("last_balance") or 0.0)] for a in pots]
+    table_rows += [
+        [f"{b.get('label')} (typed in, {str(b.get('as_at'))[:10]})", float(b.get("amount") or 0.0)]
+        for b in typed
+    ]
+    return {
+        "cure": 3,
+        "name": name,
+        "principle": principle,
+        "available": True,
+        "window": window,
+        "figures": {
+            "pots_held": figure(
+                held, unit, "sum of last balances on accounts in the savings role", "GET /accounts"
+            ),
+            "typed_assets": figure(
+                typed_total, unit, "sum of balances typed in as assets", "GET /balances"
+            ),
+            "interest_in_window": figure(
+                interest,
+                unit,
+                f"sum over {len(now)} fortnights of {', '.join(wanted) or 'no interest category'}",
+                "GET /series?direction=in&period=fortnight",
+            ),
+        },
+        "principle_asks": {},
+        "reading": reading,
+        "options": options,
+        "tables": [
+            {
+                "title": "What is kept",
+                "columns": ["Where", "Balance"],
+                "units": ["text", unit],
+                "rows": table_rows,
+                "source": "GET /accounts, GET /balances",
+            }
+        ]
+        if table_rows
+        else [],
+        "caveats": [
+            "A balance is as at the last row imported for that account, not today.",
+        ],
+    }
+
+
+def cure_four(
+    accounts: list[dict[str, Any]],
+    dwelling: list[str],
+    spend_rows: list[dict[str, Any]],
+    now: list[int],
+    lens: dict[str, Any],
+    unit: str,
+    window: dict[str, Any],
+) -> dict[str, Any]:
+    """Guard thy treasures from loss."""
+    name, principle = CURES[4]
+    liabilities = [a for a in accounts if a.get("role") == "liability"]
+    other = (
+        [a for a in liabilities if a.get("account") not in dwelling] if dwelling else liabilities
+    )
+    owed = round(sum(abs(float(a.get("last_balance") or 0.0)) for a in other), 2)
+    credit_rows = [r for r in spend_rows if r["category"] in set(lens["credit_categories"])]
+    credit = round(sum(slot_sums(credit_rows, now)), 2)
+    named = ", ".join(lens["credit_categories"])
+
+    scope = "beyond the dwelling" if dwelling else "in total"
+    if not other and not credit:
+        reading = (
+            f"Nothing is owed {scope}, and nothing left the purse for {named} over the window. "
+            "The purse has no hole in it - a fact worth knowing before the next decision."
+        )
+        options = ["Nothing here needs changing. Babylon's rule is only that this stays true."]
+    else:
+        parts = []
+        if other:
+            parts.append(
+                f"Owed {scope}: {money(owed, unit)} across {len(other)} account{'s' if len(other) != 1 else ''}."
+            )
+        parts.append(
+            f"Over the window {money(credit, unit)} left the purse for {named}."
+            if credit
+            else f"Nothing left the purse for {named} over the window."
+        )
+        reading = " ".join(parts)
+        if other and not dwelling:
+            options = [
+                "Babylon's rule: borrowed gold is for what earns, never for what is consumed. "
+                "Until the home is recorded this lens cannot tell its loan from other debt, "
+                "so it cannot say which of this is which."
+            ]
+        else:
+            options = [
+                "Babylon's rule: borrowed gold is for what earns, never for what is consumed. "
+                + (
+                    f"The {money(owed, unit)} {scope} is the place to look first."
+                    if other
+                    else "The fees are the place to look."
+                )
+            ]
+
+    caveats = []
+    if not dwelling:
+        caveats.append(
+            "No home is recorded, so this lens cannot tell the dwelling's loan from "
+            "other debt. Every liability is listed here; record the home to split them."
+        )
+    return {
+        "cure": 4,
+        "name": name,
+        "principle": principle,
+        "available": True,
+        "window": window,
+        "figures": {
+            "owed_beyond_the_dwelling" if dwelling else "owed": figure(
+                owed,
+                unit,
+                "sum of last balances on liability accounts"
+                + (" not linked to the home" if dwelling else ""),
+                "GET /accounts",
+            ),
+            "credit_cost_in_window": figure(
+                credit,
+                unit,
+                f"sum over {len(now)} fortnights of {named}",
+                "GET /series?direction=out&period=fortnight",
+            ),
+        },
+        "principle_asks": {"credit_cost_in_window": 0},
+        "reading": reading,
+        "options": options,
+        "tables": [
+            {
+                "title": "Owed" + (" beyond the dwelling" if dwelling else ""),
+                "columns": ["Account", "Balance"],
+                "units": ["text", unit],
+                "rows": [
+                    [_account_name(a), -abs(float(a.get("last_balance") or 0.0))] for a in other
+                ],
+                "source": "GET /accounts",
+            }
+        ]
+        if other
+        else [],
+        "caveats": caveats,
+    }
+
+
+def cure_five(
+    loans: list[dict[str, Any]],
+    dwelling: list[str],
+    lens: dict[str, Any],
+    unit: str,
+    window: dict[str, Any],
+) -> dict[str, Any]:
+    """Own thy own home."""
+    name, principle = CURES[5]
+    chosen = [ln for ln in loans if ln.get("account") in dwelling] if dwelling else loans
+    rows = []
+    owed = interest_pf = principal_pf = 0.0
+    years: list[float] = []
+    payoffs: list[str] = []
+    low_confidence = False
+    for ln in chosen:
+        balance = abs(float(ln.get("balance") or 0.0))
+        rate = ln.get("rate_pct")
+        ppy = float(ln.get("periods_per_year") or 26)
+        repayment = float(ln.get("repayment") or 0.0)
+        i_pf = round(balance * float(rate) / 100 / 26, 2) if rate else None
+        p_pf = round(repayment * ppy / 26 - i_pf, 2) if i_pf is not None and repayment else None
+        base = (ln.get("projection") or {}).get("base") or {}
+        owed += balance
+        interest_pf += i_pf or 0.0
+        principal_pf += p_pf or 0.0
+        if base.get("years"):
+            years.append(float(base["years"]))
+            payoffs.append(str(base.get("payoff_date"))[:4])
+        if ln.get("confidence") == "low":
+            low_confidence = True
+        rows.append(
+            [
+                str(ln.get("account")),
+                -balance,
+                rate,
+                i_pf,
+                p_pf,
+                str(base.get("payoff_date") or "")[:4] or None,
+            ]
+        )
+
+    if not chosen:
+        reading = (
+            "No loan is recorded against a home."
+            if dwelling
+            else "The ledger shows no loan account."
+        )
+        options = [
+            "Babylon's fifth cure is to own the roof. Nothing here to read until a loan is imported."
+        ]
+    else:
+        reading = (
+            f"Owed on the dwelling: {money(owed, unit)}. Each fortnight about {money(interest_pf, unit)} "
+            f"goes to interest and {money(principal_pf, unit)} to the balance"
+            + (
+                f"; at this pace it clears in {max(years):.0f} years, around {max(payoffs)}."
+                if years
+                else "."
+            )
+        )
+        options = []
+        extra = lens.get("extra_per_fortnight")
+        for ln in chosen:
+            for s in (ln.get("projection") or {}).get("scenarios") or []:
+                if s.get("extra_per_period") == extra and s.get("years_saved"):
+                    options.append(
+                        f"Once the tenth is kept: Wyrmhoard's own projection says an extra "
+                        f"{money(float(extra), unit)} a fortnight on {ln.get('account')} clears it "
+                        f"{s['years_saved']:.1f} years sooner and saves {money(float(s['interest_saved']), unit)} in interest."
+                    )
+        if not options:
+            options = [
+                "Babylon's order is the tenth first, then the roof. The arithmetic for paying faster is on the Overview."
+            ]
+
+    caveats = [
+        "Interest per fortnight is balance times rate over twenty-six, not the bank's own line; "
+        "the rate itself is worked out from the loan's interest charges.",
+    ]
+    if low_confidence:
+        caveats.append(
+            "The rate on at least one loan rests on few interest charges - low confidence."
+        )
+    if not dwelling and chosen:
+        caveats.append("No home is recorded, so every loan is read as the dwelling's.")
+    return {
+        "cure": 5,
+        "name": name,
+        "principle": principle,
+        "available": True,
+        "window": window,
+        "figures": {
+            "owed_on_the_dwelling": figure(
+                owed, unit, "sum of loan balances linked to the home", "GET /loans, GET /properties"
+            ),
+            "interest_per_fortnight": figure(
+                interest_pf, unit, "balance x rate / 26, summed", "GET /loans"
+            ),
+            "principal_per_fortnight": figure(
+                principal_pf, unit, "repayment per fortnight minus interest", "GET /loans"
+            ),
+            "years_to_clear": figure(
+                max(years) if years else None,
+                "years",
+                "at current repayments, longest loan",
+                "GET /loans",
+            ),
+        },
+        "principle_asks": {},
+        "reading": reading,
+        "options": options,
+        "tables": [
+            {
+                "title": "The dwelling's loans",
+                "columns": [
+                    "Loan",
+                    "Balance",
+                    "Rate %",
+                    "Interest / fortnight",
+                    "Principal / fortnight",
+                    "Clears",
+                ],
+                "units": ["text", unit, "percent", unit, unit, "text"],
+                "rows": rows,
+                "source": "GET /loans",
+            }
+        ]
+        if rows
+        else [],
+        "caveats": caveats,
+    }
+
+
+def cure_six(
+    payslips: list[dict[str, Any]],
+    recurring: list[dict[str, Any]],
+    lens: dict[str, Any],
+    unit: str,
+    window: dict[str, Any],
+) -> dict[str, Any]:
+    """Insure a future income."""
+    name, principle = CURES[6]
+    latest = _latest_payslips(payslips)
+    # A payslip states the employee's contribution as a deduction - negative -
+    # and the employer's as a positive. Both are money set aside.
+    ee = round(sum(abs(float(s.get("kiwisaver_ee") or 0.0)) for s in latest), 2)
+    er = round(sum(abs(float(s.get("kiwisaver_er") or 0.0)) for s in latest), 2)
+    gross = round(sum(float(s.get("gross") or 0.0) for s in latest), 2)
+    retirement_share = share(ee + er, gross)
+    insurance = [i for i in recurring if i.get("category") in set(lens["insurance_categories"])]
+    insurance_year = round(sum(float(i.get("annual_cost") or 0.0) for i in insurance), 2)
+
+    if latest:
+        dates = ", ".join(sorted({str(s.get("pay_date"))[:10] for s in latest}))
+        reading = (
+            f"On the latest payslip{'s' if len(latest) > 1 else ''} ({dates}): {money(ee, unit)} from you and "
+            f"{money(er, unit)} from the employer toward retirement"
+            + (
+                f", {retirement_share * 100:.1f}% of {money(gross, unit)} gross."
+                if retirement_share is not None
+                else "."
+            )
+        )
+    else:
+        reading = "No payslip is imported, so retirement contributions cannot be seen - a bank row shows net pay only."
+    reading += (
+        f" Insurance: {money(insurance_year, unit)} a year across {len(insurance)} polic{'ies' if len(insurance) != 1 else 'y'}."
+        if insurance
+        else " No recurring payment is categorised as insurance."
+    )
+    options = [
+        "Babylon asks that the future be provided for in advance. The figures are here; "
+        "whether they are enough is the household's question, and this lens holds no rate table to answer it."
+    ]
+    return {
+        "cure": 6,
+        "name": name,
+        "principle": principle,
+        "available": True,
+        "window": window,
+        "figures": {
+            "retirement_you_per_pay": figure(
+                ee, unit, "latest payslip per job, summed", "GET /payslips"
+            ),
+            "retirement_employer_per_pay": figure(
+                er, unit, "latest payslip per job, summed", "GET /payslips"
+            ),
+            "retirement_share_of_gross": figure(
+                retirement_share,
+                "ratio",
+                "both contributions over gross, latest payslips",
+                "GET /payslips",
+            ),
+            "insurance_per_year": figure(
+                insurance_year,
+                unit,
+                f"annual cost of recurring payments in {', '.join(lens['insurance_categories'])}",
+                "GET /recurring",
+            ),
+        },
+        "principle_asks": {},
+        "reading": reading,
+        "options": options,
+        "tables": [
+            {
+                "title": "What protects the family",
+                "columns": ["What", "How often", "Each time", "Per year"],
+                "units": ["text", "text", unit, unit],
+                "rows": [
+                    [
+                        i.get("merchant"),
+                        i.get("cadence"),
+                        i.get("typical_amount"),
+                        i.get("annual_cost"),
+                    ]
+                    for i in insurance
+                ],
+                "source": "GET /recurring",
+            }
+        ]
+        if insurance
+        else [],
+        "caveats": [
+            "A payslip states one pay; the share is that pay's, not the year's.",
+        ]
+        if latest
+        else [],
+    }
+
+
+def cure_seven(
+    earned: list[float],
+    earned_before: list[float],
+    household: dict[str, Any],
+    income: dict[str, Any],
+    unit: str,
+    starts: list[str],
+    before_starts: list[str],
+    window: dict[str, Any],
+) -> dict[str, Any]:
+    """Increase thy ability to earn."""
+    name, principle = CURES[7]
+    now_pf, before_pf = _median(earned), (_median(earned_before) if earned_before else None)
+    jobs = income.get("jobs") or []
+    annual = income.get("gross_annual")
+    upside = [str(u.get("label")) for u in (household.get("upside") or []) if u.get("label")]
+
+    reading = f"A typical fortnight earned {money(now_pf, unit)}"
+    reading += (
+        f"; in the {len(earned_before)} before, {money(before_pf, unit)}."
+        if before_pf is not None
+        else "."
+    )
+    if jobs:
+        reading += f" Payslips show {len(jobs)} job{'s' if len(jobs) != 1 else ''}, annualised {money(float(annual or 0.0), unit)} gross."
+    if upside:
+        reading += f" Income the household chooses not to budget on: {', '.join(upside)}."
+    return {
+        "cure": 7,
+        "name": name,
+        "principle": principle,
+        "available": bool(earned),
+        "window": window,
+        "figures": {
+            "earned_per_fortnight": figure(
+                now_pf,
+                unit,
+                f"median of {len(earned)} complete fortnights",
+                "GET /series?direction=in&period=fortnight",
+            ),
+            "earned_before": figure(
+                before_pf,
+                unit,
+                f"median of the {len(earned_before)} fortnights before the window",
+                "GET /series?direction=in&period=fortnight",
+            ),
+            "jobs": figure(len(jobs), "count", "jobs with a payslip", "GET /payslips"),
+            "annualised_gross": figure(
+                float(annual) if annual else None,
+                unit,
+                "year-to-date taxable gross, annualised",
+                "GET /payslips",
+            ),
+        },
+        "principle_asks": {},
+        "reading": reading,
+        "options": [
+            "Babylon's last cure has no figure. The surest increase is in the ability to earn, "
+            "and that is study and skill, not arithmetic."
+        ],
+        "series": {
+            "title": "Earned each fortnight, the window before and this one",
+            "periods": [*before_starts, *starts],
+            "rows": [{"label": "earned", "totals": [*earned_before, *earned]}],
+        },
+        "caveats": [],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Reading the household
 # ---------------------------------------------------------------------------
@@ -465,9 +985,38 @@ def read(api: str, lens: dict[str, Any]) -> dict[str, Any]:
 
     merchants = _merchants_by_purpose(api, taxonomy, lens, window) if now else {}
 
+    # The later cures read what the household holds and owes, not only what
+    # moved. Each is one call; each endpoint answers for itself when empty.
+    accounts = fetch("/accounts", api)
+    balances = fetch("/balances", api)
+    loans = fetch("/loans", api)
+    properties = fetch("/properties", api)
+    payslips = fetch("/payslips", api)
+    recurring = fetch("/recurring", api)
+    household = fetch("/household", api)
+    primary = next((p for p in properties.get("properties", []) if p.get("is_primary")), None)
+    dwelling = list((primary or {}).get("loan_accounts") or [])
+
     starts = [periods[i]["start"] for i in now]
+    before_starts = [periods[i]["start"] for i in before]
     one = cure_one(earned, spent, gifts, lens, unit, starts, window)
     two, unplaced = cure_two(earned, spend_rows, now, before, merchants, lens, unit, starts, window)
+    three = cure_three(
+        accounts, balances, money_in.get("series", []), taxonomy, now, lens, unit, window
+    )
+    four = cure_four(accounts, dwelling, spend_rows, now, lens, unit, window)
+    five = cure_five(loans, dwelling, lens, unit, window)
+    six = cure_six(payslips.get("payslips") or [], recurring.get("items") or [], lens, unit, window)
+    seven = cure_seven(
+        earned,
+        slot_sums(earning_rows, before),
+        household,
+        payslips.get("income") or {},
+        unit,
+        starts,
+        before_starts,
+        window,
+    )
 
     return {
         "lens": LENS,
@@ -478,7 +1027,7 @@ def read(api: str, lens: dict[str, Any]) -> dict[str, Any]:
         "ledger_ends": (health.get("stats") or {}).get("last_date"),
         "unit": unit,
         "window": window,
-        "readings": [one, two],
+        "readings": [one, two, three, four, five, six, seven],
         "unplaced": unplaced,
         "cannot_see": _cannot_see(setup),
     }
@@ -527,6 +1076,19 @@ def _cannot_see(setup: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
+def _cell(value: Any, kind: str, unit: str) -> str:
+    """One table cell for the terminal, formatted by the unit the column declares."""
+    if value is None:
+        return "-"
+    if kind == unit:
+        return money(float(value), unit)
+    if kind == "percent":
+        return f"{float(value):.2f}%"
+    if kind == "count":
+        return f"{int(value)}"
+    return str(value)
+
+
 def render_text(doc: dict[str, Any]) -> str:
     unit = doc["unit"]
     w = doc["window"]
@@ -543,11 +1105,13 @@ def render_text(doc: dict[str, Any]) -> str:
             lines.append(f"   -> {option}")
         for table in r.get("tables", []):
             lines.append(f"   {table['title']}:")
+            units = table.get("units") or []
             for row in table["rows"]:
-                lines.append(
-                    f"     {row[0]:<40} {money(row[1], unit):>9}  {row[2]:>3} visits"
-                    + (f"  {money(row[3], unit):>8}/fn" if row[3] is not None else "")
-                )
+                cells = [
+                    _cell(v, units[i] if i < len(units) else "text", unit)
+                    for i, v in enumerate(row)
+                ]
+                lines.append(f"     {cells[0]:<40} " + "  ".join(f"{c:>10}" for c in cells[1:]))
         lines.append("")
     if doc["unplaced"]:
         lines.append(

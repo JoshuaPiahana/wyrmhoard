@@ -41,6 +41,9 @@ def _lens(**overrides):
         "earnings_exclude": ["gift_received"],
         "purposes": {"necessities": ["essential", "commitment"], "enjoyments": ["discretionary"]},
         "merchants_named": 2,
+        "interest_categories": [],
+        "credit_categories": [],
+        "insurance_categories": [],
     }
     lens.update(overrides)
     return lens
@@ -218,3 +221,222 @@ def test_an_empty_setup_yields_no_cannot_see_and_a_gap_is_named():
     assert len(seen) == 2
     assert seen[0].startswith("61.0%")
     assert seen[1] == "x: y"
+
+
+# ---------------------------------------------------------------------------
+# Cures 3 to 7: what is held, owed, protected and earned
+# ---------------------------------------------------------------------------
+ACCOUNTS = [
+    {
+        "account": "acct-everyday",
+        "label": "Everyday",
+        "role": "everyday",
+        "last_balance": 900.0,
+    },
+    {
+        "account": "acct-pot-1",
+        "label": "Rainy day",
+        "role": "savings",
+        "last_balance": 1500.0,
+    },
+    {"account": "acct-pot-2", "label": "Car", "role": "savings", "last_balance": 500.0},
+    {
+        "account": "acct-home-loan",
+        "label": "Home loan",
+        "role": "liability",
+        "last_balance": -100000.0,
+    },
+    {
+        "account": "acct-topup-loan",
+        "label": "Top-up loan",
+        "role": "liability",
+        "last_balance": -4000.0,
+    },
+]
+TAXONOMY = {"groups": [{"key": "income", "categories": ["income_salary", "interest"]}]}
+
+
+def test_the_third_cure_reads_the_pots_and_says_whether_they_earn():
+    income_rows = [_row("interest", "income", [1.0, 2.0, 3.0])]
+    r = babylon.cure_three(
+        ACCOUNTS,
+        [],
+        income_rows,
+        TAXONOMY,
+        [0, 1, 2],
+        _lens(interest_categories=["interest"]),
+        "NZD",
+        WINDOW,
+    )
+    assert r["figures"]["pots_held"]["value"] == 2000.0
+    assert r["figures"]["interest_in_window"]["value"] == 6.0
+    assert [row[0] for row in r["tables"][0]["rows"]] == ["Rainy day", "Car"]
+    assert "$6 arrived as interest" in r["reading"]
+
+
+def test_the_third_cure_admits_when_interest_cannot_be_told_apart():
+    r = babylon.cure_three(
+        ACCOUNTS,
+        [],
+        [],
+        {"groups": []},
+        [0],
+        _lens(interest_categories=["interest"]),
+        "NZD",
+        WINDOW,
+    )
+    assert "no category for interest" in r["reading"]
+    assert r["figures"]["interest_in_window"]["value"] == 0.0
+
+
+def test_the_fourth_cure_names_the_strength_when_there_is_one():
+    dwelling = ["acct-home-loan", "acct-topup-loan"]
+    r = babylon.cure_four(
+        ACCOUNTS,
+        dwelling,
+        [],
+        [0, 1, 2],
+        _lens(credit_categories=["bnpl", "bank_fees"]),
+        "NZD",
+        WINDOW,
+    )
+    assert r["figures"]["owed_beyond_the_dwelling"]["value"] == 0.0
+    assert "no hole in it" in r["reading"]
+    assert r["tables"] == []
+
+
+def test_the_fourth_cure_will_not_call_the_mortgage_consumer_debt_when_it_cannot_tell():
+    """With no home recorded every loan is 'owed in total', and the option must say why it stops there."""
+    rows = [_row("bank_fees", "commitment", [5.0, 5.0, 5.0])]
+    r = babylon.cure_four(
+        ACCOUNTS, [], rows, [0, 1, 2], _lens(credit_categories=["bnpl", "bank_fees"]), "NZD", WINDOW
+    )
+    assert r["figures"]["owed"]["value"] == 104000.0
+    assert r["figures"]["credit_cost_in_window"]["value"] == 15.0
+    assert "cannot tell its loan from other debt" in r["options"][0]
+    assert any("No home is recorded" in c for c in r["caveats"])
+
+
+def _loan(account: str, balance: float, rate: float, repayment: float, years: float) -> dict:
+    return {
+        "account": account,
+        "balance": -balance,
+        "rate_pct": rate,
+        "repayment": repayment,
+        "cadence": "fortnightly",
+        "periods_per_year": 26,
+        "confidence": "high",
+        "projection": {
+            "base": {"years": years, "payoff_date": "2040-06-01"},
+            "scenarios": [
+                {"extra_per_period": 50, "years_saved": 2.5, "interest_saved": 9000.0},
+            ],
+        },
+    }
+
+
+def test_the_fifth_cure_splits_each_fortnight_into_interest_and_principal():
+    loans = [_loan("acct-home-loan", 100000.0, 5.2, 400.0, 14.0)]
+    r = babylon.cure_five(loans, ["acct-home-loan"], _lens(extra_per_fortnight=50), "NZD", WINDOW)
+    f = r["figures"]
+    assert f["owed_on_the_dwelling"]["value"] == 100000.0
+    assert f["interest_per_fortnight"]["value"] == 200.0  # 100000 * 5.2% / 26
+    assert f["principal_per_fortnight"]["value"] == 200.0
+    assert f["years_to_clear"]["value"] == 14.0
+    assert f["years_to_clear"]["unit"] == "years"
+    assert "clears in 14 years, around 2040" in r["reading"]
+    assert "2.5 years sooner" in r["options"][0] and "$9,000" in r["options"][0]
+    assert r["tables"][0]["rows"][0][2] == 5.2
+
+
+def test_the_sixth_cure_reads_contributions_as_money_set_aside_whichever_sign_the_payslip_uses():
+    slips = [
+        {
+            "employee_ref": "A",
+            "pay_date": "2026-09-02",
+            "gross": 3000.0,
+            "kiwisaver_ee": -105.0,
+            "kiwisaver_er": 120.0,
+        },
+        {
+            "employee_ref": "A",
+            "pay_date": "2026-08-19",
+            "gross": 3000.0,
+            "kiwisaver_ee": -100.0,
+            "kiwisaver_er": 115.0,
+        },
+        {
+            "employee_ref": "B",
+            "pay_date": "2026-08-27",
+            "gross": 400.0,
+            "kiwisaver_ee": 0.0,
+            "kiwisaver_er": 0.0,
+        },
+    ]
+    recurring = [
+        {
+            "merchant": "EXAMPLE INSURER",
+            "category": "insurance",
+            "cadence": "monthly",
+            "typical_amount": 60.0,
+            "annual_cost": 720.0,
+        },
+        {
+            "merchant": "EXAMPLE STREAMING",
+            "category": "subscriptions",
+            "cadence": "monthly",
+            "typical_amount": 15.0,
+            "annual_cost": 180.0,
+        },
+    ]
+    r = babylon.cure_six(slips, recurring, _lens(insurance_categories=["insurance"]), "NZD", WINDOW)
+    f = r["figures"]
+    assert f["retirement_you_per_pay"]["value"] == 105.0, "the latest slip per job, as a positive"
+    assert f["retirement_employer_per_pay"]["value"] == 120.0
+    assert f["retirement_share_of_gross"]["value"] == pytest.approx(225 / 3400, abs=1e-4)
+    assert f["insurance_per_year"]["value"] == 720.0
+    assert [row[0] for row in r["tables"][0]["rows"]] == ["EXAMPLE INSURER"]
+    assert "1 policy" in r["reading"]
+
+
+def test_the_sixth_cure_says_when_there_is_no_payslip():
+    r = babylon.cure_six([], [], _lens(insurance_categories=["insurance"]), "NZD", WINDOW)
+    assert "No payslip is imported" in r["reading"]
+    assert r["figures"]["retirement_share_of_gross"]["value"] is None
+
+
+def test_the_seventh_cure_states_the_trend_and_the_unbudgeted_income():
+    household = {"upside": [{"label": "Weekend reserve work"}]}
+    income = {"jobs": [{"ref": "A"}, {"ref": "B"}], "gross_annual": 104000.0}
+    r = babylon.cure_seven(
+        [2100.0, 2000.0, 2200.0],
+        [1900.0, 1950.0, 2000.0],
+        household,
+        income,
+        "NZD",
+        STARTS,
+        ["2026-01-21", "2026-02-04", "2026-02-18"],
+        WINDOW,
+    )
+    assert r["figures"]["earned_per_fortnight"]["value"] == 2100.0
+    assert r["figures"]["earned_before"]["value"] == 1950.0
+    assert r["figures"]["jobs"]["value"] == 2
+    assert "Weekend reserve work" in r["reading"]
+    assert len(r["series"]["periods"]) == 6
+    assert r["series"]["rows"][0]["totals"] == [1900.0, 1950.0, 2000.0, 2100.0, 2000.0, 2200.0]
+    assert "target" not in r["series"]
+
+
+def test_every_later_cure_carries_units_and_sources_too():
+    readings = [
+        babylon.cure_three(ACCOUNTS, [], [], TAXONOMY, [0], _lens(), "NZD", WINDOW),
+        babylon.cure_four(ACCOUNTS, [], [], [0], _lens(), "NZD", WINDOW),
+        babylon.cure_five([], [], _lens(), "NZD", WINDOW),
+        babylon.cure_six([], [], _lens(), "NZD", WINDOW),
+        babylon.cure_seven([1.0], [], {}, {}, "NZD", STARTS[:1], [], WINDOW),
+    ]
+    assert [r["cure"] for r in readings] == [3, 4, 5, 6, 7]
+    for reading in readings:
+        for name, fig in reading["figures"].items():
+            assert fig["unit"] and fig["source"], name
+        assert reading["reading"]
