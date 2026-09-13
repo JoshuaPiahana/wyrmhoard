@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import Page, expect
 
-TABS = ["overview", "spending", "repeats", "notes", "data"]
+TABS = ["overview", "spending", "repeats", "lens", "notes", "data"]
 
 
 # ---------------------------------------------------------------------------

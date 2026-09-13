@@ -78,6 +78,25 @@ case "$cmd" in
   check)    "$0" lint && "$0" test && "$0" e2e ;;
   shell)    docker compose run --rm --no-deps api bash ;;
 
+  # A lens is a consumer under consumers/<name>/ that reads the API and writes
+  # reports/lenses/<name>.json for the dashboard's Lens tab. It runs in the api
+  # image only because that image has a Python; it imports nothing from the
+  # core and talks to it over HTTP like any other client. Needs `./hoard up`
+  # first - the run joins the compose network, where `api` resolves.
+  lens)
+    name="${1:?usage: ./hoard lens <name> [args]   (the lenses are the directories under consumers/ with a lens.yml)}"
+    shift || true
+    if [ ! -f "consumers/$name/lens.yml" ]; then
+      echo "No lens called '$name'. Available:" >&2
+      for d in consumers/*/lens.yml; do echo "  $(basename "$(dirname "$d")")" >&2; done
+      exit 1
+    fi
+    mkdir -p reports/lenses
+    docker compose run --rm --no-deps -T \
+      -v "$PWD/consumers:/consumers:ro" -v "$PWD/reports:/reports" \
+      -w "/consumers/$name" api python "$name.py" --api http://api:8000 --out /reports/lenses "$@"
+    ;;
+
   # Everything else is a CLI subcommand.
   ingest|sample|summary|review|recategorise|note|notes|loan|init|reset)
             run "$cmd" "$@" ;;
@@ -99,6 +118,7 @@ Wyrmhoard - household finance
   ./hoard note "..."         write down what happened this month
   ./hoard notes              what you have said about past months
   ./hoard loan               mortgage payoff scenarios
+  ./hoard lens babylon       read the figures through a lens; shows on the Lens tab
 
   ./hoard lint               static analysis: data guard, ruff, mypy
   ./hoard fmt                auto-fix lint and formatting
@@ -107,7 +127,7 @@ Wyrmhoard - household finance
   ./hoard check              all of the above, in the order CI runs them
   ./hoard build              rebuild the image after changing dependencies
 
-The monthly routine is:   ./hoard ingest && ./hoard summary
+The monthly routine is:   ./hoard ingest && ./hoard lens babylon   (./hoard summary for the terminal)
 USAGE
     ;;
   *) echo "Unknown command: $cmd. Try ./hoard help" >&2; exit 1 ;;

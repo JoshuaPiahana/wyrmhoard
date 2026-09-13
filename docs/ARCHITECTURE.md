@@ -63,6 +63,7 @@ If yes, it belongs in a consumer.
 | "Your position is worsening" | Yes — over what window, and is a one-off repair a trend? | Consumer |
 | "A household like yours would receive $8,771" | Yes — depends on a jurisdiction's rules | Jurisdiction pack |
 | "Build a buffer before overpaying the mortgage" | Yes — this is one school of thought | Consumer |
+| "You kept 4% of what you earned; keep a tenth" | Yes — one book's rule, and a household may follow another | Consumer (a lens) |
 
 The test catches things that look like analysis and are not. "Weeks of
 essentials in the bank" is arithmetic, but it needs to know what is essential,

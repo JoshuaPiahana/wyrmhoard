@@ -8,3 +8,5 @@
 pytest==9.1.1
 pytest-playwright==0.9.0
 playwright==1.62.0
+# consumers/babylon needs it; e2e/test_lens.py runs that lens in-process
+PyYAML==6.0.3

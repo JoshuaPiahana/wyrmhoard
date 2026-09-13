@@ -29,6 +29,20 @@ services:
   web:
     container_name: !reset null
     ports: !reset []
+    volumes:
+      - ./web/src:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # The same swap for lens readings: the real ones hold real numbers, and
+      # the Lens tab's tests need a directory they can write synthetic ones to.
+      - e2e-lenses:/lenses:ro
+
+  e2e:
+    volumes:
+      - ./e2e:/e2e
+      - ./producers:/producers:ro
+      - ./consumers:/consumers:ro
+      - e2e-lenses:/lenses
 
 volumes:
   e2e-data:
+  e2e-lenses:

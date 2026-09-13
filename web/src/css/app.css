@@ -225,3 +225,46 @@ select, input[type=text]{
 .remember{display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap}
 .remember input{cursor:pointer; margin:0}
 .remember .hint{font-size:13px; color:var(--ink-faint)}
+
+/* ---- lens ------------------------------------------------------------
+   Renders any lens that emits the contract in consumers/README.md. Kept
+   generic on purpose: a lens-specific class here would be the dashboard
+   learning a lens by name, which a guard test forbids. */
+.lens-pick{margin-left:auto; font-size:13px; color:var(--ink-faint); display:flex; gap:8px; align-items:center}
+.lens-pick select{font-size:14px}
+.lens-head{margin-bottom:18px}
+.lens-head p{max-width:70ch}
+.lens-when code{font-size:12px}
+.reading{margin-bottom:18px}
+.reading-head{display:flex; align-items:baseline; gap:12px}
+.reading-head .num{font-size:13px; font-weight:700; color:var(--accent); background:var(--accent-bg); border-radius:999px; width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center; flex:none}
+.reading .principle{font-style:italic; color:var(--ink-soft)}
+.reading .reading-text{font-size:16px; color:var(--ink); max-width:75ch}
+.reading .options{margin:0 0 14px; padding-left:0; list-style:none}
+.reading .options li{padding:10px 14px; border-left:4px solid var(--accent); background:var(--accent-bg); border-radius:0 8px 8px 0; margin-bottom:8px; max-width:75ch}
+.reading .figures{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px 18px; margin:14px 0 0; padding:14px 0 0; border-top:1px solid var(--line-soft)}
+.reading .figures div{display:flex; justify-content:space-between; gap:10px; font-size:13px}
+.reading .figures dt{color:var(--ink-faint)}
+.reading .figures dd{margin:0; font-weight:600; font-variant-numeric:tabular-nums}
+.reading .asks{display:flex; flex-wrap:wrap; gap:8px 22px; font-size:14px; margin:12px 0 0}
+.reading .asks b{color:var(--accent); font-weight:670}
+.reading .caveats{margin:14px 0 0; padding-left:18px}
+.lens-chart{margin:16px 0 8px}
+.lens-chart figcaption{font-size:13px; color:var(--ink-faint); margin-bottom:6px}
+.lens-chart svg{width:100%; height:auto; display:block}
+.lens-chart rect.s0{fill:var(--accent)}
+.lens-chart rect.s1{fill:#c9a227}
+.lens-chart rect.s2{fill:#8aa8a3}
+.lens-chart line.zero{stroke:var(--line); stroke-width:1}
+.lens-chart line.target{stroke:var(--bad); stroke-width:1.5; stroke-dasharray:6 4}
+.lens-chart text.lab{font-size:11px; fill:var(--ink-faint)}
+.lens-legend{display:flex; gap:16px; font-size:12px; color:var(--ink-faint); margin-top:6px; flex-wrap:wrap}
+.lens-legend span{display:inline-flex; align-items:center; gap:6px}
+.lens-legend .dot{width:11px; height:11px; border-radius:3px; display:inline-block}
+.lens-legend .dot.s0{background:var(--accent)}
+.lens-legend .dot.s1{background:#c9a227}
+.lens-legend .dot.s2{background:#8aa8a3}
+.lens-legend .dash{width:18px; border-top:2px dashed var(--bad); display:inline-block}
+.lens-table{margin-top:14px}
+.lens-table h4{margin:0 0 8px; font-size:14px}
+.cannot{margin:6px 0 0; padding-left:18px}
