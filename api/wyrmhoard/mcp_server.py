@@ -305,14 +305,26 @@ def get_spending_over_time(
     to_date: str | None = None,
     period: str = "fortnight",
     categories: list[str] | None = None,
+    by: str = "category",
+    top: int = series.DEFAULT_TOP,
 ) -> dict[str, Any]:
     """
-    Spending per category, per period, across a date range.
+    Spending per category - or per merchant - per period, across a date range.
 
     This is the tool for any question about change - "is our fuel spending
     going up", "what did groceries cost each fortnight last year", "compare
     this winter to last". Everything else here averages a recent window and
     cannot answer those.
+
+    It is also the tool for "where does the money in this category actually
+    go": `by="merchant"` gives one row per shop instead of per category, and
+    `categories` narrows it, so `by="merchant", categories=["hobbies"]` is the
+    list of shops the hobbies money went to, largest first. A merchant series
+    names the `top` largest and folds the rest into one "everything else" row
+    carrying how many shops it stands for, so the series still sums to the
+    whole; `top=0` names every merchant. Merchant names are the household's
+    own memos, normalised - they are as identifying as the raw rows, so use
+    this mode when the question is about a shop, not by default.
 
     Periods are `week`, `fortnight` or `month`. Prefer `fortnight` for a
     household paid fortnightly: calendar months hold two pay days sometimes and
@@ -333,11 +345,19 @@ def get_spending_over_time(
         period: week | fortnight | month.
         categories: category keys to include. Defaults to all of them, which on
             a long range is a lot of numbers - name the few you care about.
+        by: `category` (default) or `merchant`.
+        top: in merchant mode, how many shops to name before "everything else".
     """
     try:
-        payload = series.spending(from_=from_date, to=to_date, period=period, categories=categories)
+        payload = series.spending(
+            from_=from_date, to=to_date, period=period, categories=categories, by=by, top=top
+        )
     except ValueError as exc:
-        return {"error": str(exc), "allowed_periods": list(series.PERIODS)}
+        return {
+            "error": str(exc),
+            "allowed_periods": list(series.PERIODS),
+            "allowed_by": list(series.BY),
+        }
     return _described(payload)
 
 
@@ -347,14 +367,17 @@ def get_income_over_time(
     to_date: str | None = None,
     period: str = "fortnight",
     categories: list[str] | None = None,
+    by: str = "category",
+    top: int = series.DEFAULT_TOP,
 ) -> dict[str, Any]:
     """
-    Money received per category, per period, across a date range.
+    Money received per category - or per payer - per period, across a date range.
 
     The same shape as `get_spending_over_time` with the sign flipped. Use it
     for "how much did we actually get from X", where X is any income category
     the household's rules define - wages, a government payment, gifts, a
-    refund. `get_taxonomy` lists them.
+    refund. `get_taxonomy` lists them. `by="merchant"` keys the rows on who
+    paid rather than on category, with the same `top` fold as spending.
 
     Transfers between the household's own accounts are excluded, so money
     shuffled between two of their pots is not counted as income.
@@ -375,11 +398,19 @@ def get_income_over_time(
         to_date: ISO date to end at. Defaults to the end of the ledger.
         period: week | fortnight | month.
         categories: category keys to include. Defaults to all of them.
+        by: `category` (default) or `merchant` - who paid.
+        top: in merchant mode, how many payers to name before "everything else".
     """
     try:
-        payload = series.received(from_=from_date, to=to_date, period=period, categories=categories)
+        payload = series.received(
+            from_=from_date, to=to_date, period=period, categories=categories, by=by, top=top
+        )
     except ValueError as exc:
-        return {"error": str(exc), "allowed_periods": list(series.PERIODS)}
+        return {
+            "error": str(exc),
+            "allowed_periods": list(series.PERIODS),
+            "allowed_by": list(series.BY),
+        }
     return _described(payload)
 
 

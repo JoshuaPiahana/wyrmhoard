@@ -54,6 +54,25 @@ def strip_noise(text: str) -> str:
     return _WS_RE.sub(" ", cleaned).strip()
 
 
+def merchant_key(memo: str) -> str:
+    """
+    A stable-ish identity for who a memo was paid to.
+
+    Reference numbers and card fragments are gone already; the remaining
+    bare numbers (a store number, a terminal id) go too, and the key is cut
+    to four words - short enough that trailing plumbing usually falls off,
+    long enough that two shops sharing a first word stay apart. It is a
+    normalisation and not a fact about the merchant: two memos with this key
+    in common were almost certainly the same shop, and the reverse does not
+    hold - a branch named in the first four words is a second row. Anything
+    that reports by merchant should say which rule it used, and this is the
+    one rule, shared by everything that does.
+    """
+    cleaned = strip_noise(memo)
+    words = [w for w in cleaned.split() if not w.isdigit()]
+    return " ".join(words[:4])[:40] or "(blank)"
+
+
 def squash(text: str) -> str:
     """
     Everything but letters and digits removed.

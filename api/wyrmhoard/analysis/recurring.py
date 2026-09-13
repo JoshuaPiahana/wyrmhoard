@@ -41,13 +41,6 @@ PER_YEAR = {
 }
 
 
-def _merchant_key(memo: str) -> str:
-    """A stable-ish merchant identity, with reference numbers stripped out."""
-    cleaned = categorise.strip_noise(memo)
-    words = [w for w in cleaned.split() if not w.isdigit()]
-    return " ".join(words[:4])[:40] or "(blank)"
-
-
 def _classify_cadence(intervals: list[float]) -> tuple[str | None, float]:
     """Returns (cadence name, regularity score 0-1)."""
     if len(intervals) < 2:
@@ -76,7 +69,7 @@ def detect(min_occurrences: int = 3, months: int = 12) -> list[dict[str, Any]]:
     if sub.empty:
         return []
 
-    sub["merchant"] = sub["memo"].map(_merchant_key)
+    sub["merchant"] = sub["memo"].map(categorise.merchant_key)
     idx = categorise.rule_index()
     out: list[dict[str, Any]] = []
 

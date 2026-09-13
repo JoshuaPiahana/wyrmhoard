@@ -167,12 +167,20 @@ def spending_series(
     period: str = "fortnight",
     direction: str = "out",
     category: list[str] | None = Query(None),
+    by: str = "category",
+    top: int = series.DEFAULT_TOP,
 ) -> dict[str, Any]:
     """
-    Category totals per period across a date range.
+    Totals per period across a date range, per category or per merchant.
 
     `direction` is `out` for money spent or `in` for money received. Both
     exclude movements between the household's own accounts.
+
+    `by` is `category` or `merchant`. A merchant series names the `top`
+    largest and folds the rest into one "everything else" row, so it still
+    sums to the whole; `top=0` names every merchant. `category` filters
+    either way — "which shops the hobbies money goes to" is
+    `?by=merchant&category=hobbies`.
 
     `period` is `week`, `fortnight` or `month`. Fortnights align to the
     household's pay day where one is known — a household paid every second
@@ -185,7 +193,13 @@ def spending_series(
     """
     try:
         return series.by_category(
-            direction=direction, from_=from_, to=to, period=period, categories=category
+            direction=direction,
+            from_=from_,
+            to=to,
+            period=period,
+            categories=category,
+            by=by,
+            top=top,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

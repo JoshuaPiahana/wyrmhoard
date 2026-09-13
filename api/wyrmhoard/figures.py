@@ -87,6 +87,7 @@ NON_CURRENCY = {
     "periods": "count",
     "occurrences": "count",
     "transfers": "count",
+    "merchants": "count",
     "ird_payments": "count",
     "msd_payments": "count",
     "returned": "count",

@@ -53,6 +53,18 @@ PERIODS = ("week", "fortnight", "month")
 #: transaction, not a judgement about it - see taxonomy.py.
 DIRECTIONS = ("out", "in")
 
+#: What a series is keyed on. `category` is the household's own grouping;
+#: `merchant` is who the money went to, by the one normalisation in
+#: `categorise.merchant_key`. The second exists because "what did we spend on
+#: hobbies" and "what did we spend at that one shop" are different questions,
+#: and the second is the one that has changed a household's mind.
+BY = ("category", "merchant")
+
+#: How many merchants a merchant series names before folding the rest into
+#: one row. A two-year ledger has hundreds; a reader wants the few that
+#: matter and the total kept honest, not a list.
+DEFAULT_TOP = 10
+
 
 def _as_date(value: str | date | None) -> date | None:
     if value is None or value == "":
@@ -173,9 +185,11 @@ def spending(
     categories: list[str] | None = None,
     anchor: str | date | None = None,
     df: pd.DataFrame | None = None,
+    by: str = "category",
+    top: int = DEFAULT_TOP,
 ) -> dict[str, Any]:
-    """Money out, per category, per period. See `by_category`."""
-    return by_category("out", from_, to, period, categories, anchor, df)
+    """Money out, per category or per merchant, per period. See `by_category`."""
+    return by_category("out", from_, to, period, categories, anchor, df, by, top)
 
 
 def received(
@@ -185,9 +199,11 @@ def received(
     categories: list[str] | None = None,
     anchor: str | date | None = None,
     df: pd.DataFrame | None = None,
+    by: str = "category",
+    top: int = DEFAULT_TOP,
 ) -> dict[str, Any]:
     """
-    Money in, per category, per period. See `by_category`.
+    Money in, per category or per payer, per period. See `by_category`.
 
     This is what replaced a New Zealand entitlements function that asked one
     hardcoded version of the question - how much arrived from IRD and MSD over
@@ -196,7 +212,75 @@ def received(
     with the sign flipped, so a jurisdiction pack can ask it about whatever
     categories its rulebook cares about.
     """
-    return by_category("in", from_, to, period, categories, anchor, df)
+    return by_category("in", from_, to, period, categories, anchor, df, by, top)
+
+
+def _per_period(totals: list[float], windows: list[dict[str, Any]]) -> float | None:
+    # Averaged over complete periods only. Dividing by every period would let
+    # a half-finished fortnight at the end drag the figure down and look like
+    # the household had cut back.
+    complete = [t for t, w in zip(totals, windows, strict=True) if w["complete"]]
+    return round(sum(complete) / len(complete), 2) if complete else None
+
+
+def _row(
+    by: str,
+    key: str,
+    categories: list[str] | None,
+    rules: dict[str, categorise.Rule],
+    totals: list[float],
+    counts: list[int],
+    windows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """One series, keyed by category or by merchant, in the same shape."""
+    if by == "merchant":
+        leading = (categories or ["unknown"])[0]
+        rule = rules.get(leading)
+        row: dict[str, Any] = {
+            "merchant": key,
+            "label": key,
+            "category": leading,
+            "group": rule.group if rule else "unknown",
+        }
+        if categories and len(categories) > 1:
+            row["categories"] = categories
+    else:
+        rule = rules.get(key)
+        row = {
+            "category": key,
+            "label": rule.label if rule else key.replace("_", " ").title(),
+            "group": rule.group if rule else "unknown",
+        }
+    row.update(
+        {
+            "totals": totals,
+            "transactions": counts,
+            "total": round(sum(totals), 2),
+            "per_period": _per_period(totals, windows),
+        }
+    )
+    return row
+
+
+def _everything_else(tail: list[dict[str, Any]], windows: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    The merchants beyond `top`, folded into one row so the series still sums
+    to the whole. It names how many it stands for and carries no category:
+    they will have had several, and picking one would be inventing a fact.
+    """
+    totals = [round(sum(r["totals"][i] for r in tail), 2) for i in range(len(windows))]
+    counts = [sum(r["transactions"][i] for r in tail) for i in range(len(windows))]
+    return {
+        "merchant": None,
+        "label": "everything else",
+        "merchants": len(tail),
+        "category": None,
+        "group": None,
+        "totals": totals,
+        "transactions": counts,
+        "total": round(sum(totals), 2),
+        "per_period": _per_period(totals, windows),
+    }
 
 
 def by_category(
@@ -207,13 +291,27 @@ def by_category(
     categories: list[str] | None = None,
     anchor: str | date | None = None,
     df: pd.DataFrame | None = None,
+    by: str = "category",
+    top: int = DEFAULT_TOP,
 ) -> dict[str, Any]:
     """
-    Category totals per period across a range, in either direction.
+    Totals per period across a range, in either direction, keyed how the
+    caller asks.
 
     `direction` is `out` for money spent or `in` for money received. Both
     exclude transfers between the household's own accounts, so neither counts
     a shuffle between two pots as either.
+
+    `by` is `category` (the default, one row per category key) or `merchant`
+    (one row per counterparty, as `categorise.merchant_key` normalises the
+    memo). `categories` filters either way, so "which shops is the hobbies
+    money going to" is `by="merchant", categories=["hobbies"]`.
+
+    A merchant series names the `top` largest and folds every other merchant
+    into one final row labelled "everything else", carrying how many it
+    stands for. The series still sums to the whole: a top ten that quietly
+    lost its tail would be a total that looks complete and is not. `top=0`
+    means every merchant.
 
     `from_` and `to` default to the whole ledger. Periods outside what the
     ledger actually covers, and the period currently in progress, come back
@@ -227,6 +325,10 @@ def by_category(
         raise ValueError(f"period must be one of {', '.join(PERIODS)}")
     if direction not in DIRECTIONS:
         raise ValueError(f"direction must be one of {', '.join(DIRECTIONS)}")
+    if by not in BY:
+        raise ValueError(f"by must be one of {', '.join(BY)}")
+    if top < 0:
+        raise ValueError("top must be 0 (every merchant) or a positive count")
 
     df = cashflow.frame() if df is None else df
     currency = config.household().currency
@@ -240,6 +342,7 @@ def by_category(
         "available": False,
         "reason": "No transactions in the ledger yet.",
         "direction": direction,
+        "by": by,
         "period": period,
         "anchor": chosen["anchor"],
         "anchor_source": chosen["source"],
@@ -290,6 +393,7 @@ def by_category(
         return {
             "available": True,
             "direction": direction,
+            "by": by,
             "period": period,
             "anchor": chosen["anchor"],
             "anchor_source": chosen["source"],
@@ -302,11 +406,23 @@ def by_category(
         }
 
     sub = sub.assign(bucket=_bucket_start(sub["date"], period, anchor_date))
-    grouped = sub.groupby(["category", "bucket"])["amount"].agg(["sum", "count"])
+    if by == "merchant":
+        sub = sub.assign(merchant=sub["memo"].map(categorise.merchant_key))
+    grouped = sub.groupby([by, "bucket"])["amount"].agg(["sum", "count"])
+
+    # A merchant can sit in more than one category - a supermarket that sells
+    # fuel, a shop recategorised partway through the ledger. Report the one
+    # most of its rows carry, and name the others rather than pretend.
+    categories_of: dict[str, list[str]] = {}
+    if by == "merchant":
+        categories_of = {
+            str(m): [str(c) for c in chunk["category"].value_counts().index]
+            for m, chunk in sub.groupby("merchant")
+        }
 
     rules = categorise.rule_index()
     series: list[dict[str, Any]] = []
-    for cat, chunk in grouped.groupby(level="category"):
+    for key, chunk in grouped.groupby(level=by):
         totals = [0.0] * len(windows)
         counts = [0] * len(windows)
         for (_, bucket), row in chunk.iterrows():
@@ -315,29 +431,17 @@ def by_category(
                 continue
             totals[slot] = round(float(sign * row["sum"]), 2)
             counts[slot] = int(row["count"])
-        rule = rules.get(str(cat))
-        complete_totals = [t for t, w in zip(totals, windows, strict=True) if w["complete"]]
         series.append(
-            {
-                "category": str(cat),
-                "label": rule.label if rule else str(cat).replace("_", " ").title(),
-                "group": rule.group if rule else "unknown",
-                "totals": totals,
-                "transactions": counts,
-                "total": round(sum(totals), 2),
-                # Averaged over complete periods only. Dividing by every period
-                # would let a half-finished fortnight at the end drag the
-                # figure down and look like the household had cut back.
-                "per_period": round(sum(complete_totals) / len(complete_totals), 2)
-                if complete_totals
-                else None,
-            }
+            _row(by, str(key), categories_of.get(str(key)), rules, totals, counts, windows)
         )
 
     series.sort(key=lambda s: s["total"], reverse=True)
+    if by == "merchant" and top and len(series) > top:
+        series = [*series[:top], _everything_else(series[top:], windows)]
     return {
         "available": True,
         "direction": direction,
+        "by": by,
         "period": period,
         "anchor": chosen["anchor"],
         "anchor_source": chosen["source"],
