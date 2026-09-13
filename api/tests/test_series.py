@@ -22,10 +22,13 @@ from wyrmhoard import config, db
 from wyrmhoard.analysis import cashflow, series
 
 
-def _load(rows: list[tuple[str, str, float]]) -> None:
-    """rows are (date, memo, amount)."""
-    db.insert_transactions(
-        [
+def _load(rows: list[tuple]) -> None:
+    """rows are (date, memo, amount) or (date, memo, amount, category)."""
+    records = []
+    for i, row in enumerate(rows):
+        when, memo, amount = row[:3]
+        category = row[3] if len(row) > 3 else ("fuel" if amount < 0 else "income_salary")
+        records.append(
             {
                 "fingerprint": f"fp{i}",
                 "account": "Everyday",
@@ -33,14 +36,12 @@ def _load(rows: list[tuple[str, str, float]]) -> None:
                 "memo": memo,
                 "amount": amount,
                 "balance": None,
-                "category": "fuel" if amount < 0 else "income_salary",
+                "category": category,
                 "grp": "essential" if amount < 0 else "income",
                 "categorised_by": "test",
             }
-            for i, (when, memo, amount) in enumerate(rows)
-        ],
-        source_file="test.csv",
-    )
+        )
+    db.insert_transactions(records, source_file="test.csv")
     cashflow.frame.cache_clear()
 
 
@@ -193,3 +194,97 @@ def test_an_empty_ledger_declines_rather_than_inventing_periods(tmp_path, monkey
     assert out["available"] is False
     assert out["series"] == []
     assert out["periods"] == []
+
+
+# ---------------------------------------------------------------------------
+# By merchant. The rule: a merchant series is the same money as the category
+# series, keyed differently, and folding the tail never loses any of it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def many_shops(tmp_path, monkeypatch):
+    """
+    Two complete fortnights of hobby spending across five shops, with the
+    memo plumbing a real bank export carries - card fragments, store numbers -
+    so one shop arriving under three spellings is the case under test.
+    """
+    anchor = date.today() - timedelta(days=28)
+    _declare(tmp_path / "cfg", monkeypatch, {"pay_anchor": anchor.isoformat()})
+    d = lambda n: (anchor + timedelta(days=n)).isoformat()  # noqa: E731
+    _load(
+        [
+            (d(0), "EXAMPLE GAMES 4521 CARD 1234", -60.0, "hobbies"),
+            (d(5), "EXAMPLE GAMES 4521 CARD 1234", -40.0, "hobbies"),
+            (d(16), "EXAMPLE GAMES 987654 REF AB12CD", -100.0, "hobbies"),
+            (d(1), "BOOKSHOP", -30.0, "hobbies"),
+            (d(2), "CRAFT STORE", -20.0, "hobbies"),
+            (d(3), "MODEL SUPPLIES", -10.0, "hobbies"),
+            (d(4), "PAINTS", -5.0, "hobbies"),
+            # Same shop, different category - the fuel bought at a supermarket.
+            (d(6), "SUPERMARKET", -80.0, "groceries"),
+            (d(7), "SUPERMARKET", -50.0, "fuel"),
+            (d(27), "SUPERMARKET", -70.0, "groceries"),
+        ]
+    )
+    return anchor
+
+
+def test_a_merchant_series_is_the_category_series_keyed_by_shop(many_shops):
+    """
+    "What did hobbies cost" and "what did that shop cost" are the same money.
+    The merchant key folds reference numbers and card fragments, so one shop
+    under three spellings is one row.
+    """
+    by_cat = series.spending(period="fortnight", categories=["hobbies"])
+    by_shop = series.spending(period="fortnight", categories=["hobbies"], by="merchant", top=0)
+
+    assert by_shop["by"] == "merchant"
+    hobbies = next(s for s in by_cat["series"] if s["category"] == "hobbies")
+    assert sum(s["total"] for s in by_shop["series"]) == hobbies["total"]
+
+    games = [s for s in by_shop["series"] if s["merchant"].startswith("EXAMPLE GAMES")]
+    assert len(games) == 1, "three spellings of one shop must be one row"
+    assert games[0]["total"] == 200.0
+    assert games[0]["totals"][:2] == [100.0, 100.0]
+    assert games[0]["category"] == "hobbies"
+    assert games[0]["group"] == hobbies["group"], "same lookup as the category row"
+
+
+def test_folding_the_tail_keeps_the_total_true(many_shops):
+    """
+    A top-N that quietly drops the rest is a total that looks complete and is
+    not - the shape of the dashboard's old "choices" bug. The fold row says
+    how many it stands for and sums exactly what was folded.
+    """
+    everyone = series.spending(period="fortnight", categories=["hobbies"], by="merchant", top=0)
+    folded = series.spending(period="fortnight", categories=["hobbies"], by="merchant", top=2)
+
+    assert len(folded["series"]) == 3
+    named, tail = folded["series"][:2], folded["series"][2]
+    assert [s["merchant"] for s in named] == [s["merchant"] for s in everyone["series"][:2]]
+    assert tail["merchant"] is None
+    assert tail["label"] == "everything else"
+    assert tail["merchants"] == 3
+    assert tail["total"] == sum(s["total"] for s in everyone["series"][2:])
+    assert sum(s["total"] for s in folded["series"]) == sum(s["total"] for s in everyone["series"])
+    # Period by period too, not only the grand total.
+    for i in range(len(folded["periods"])):
+        assert tail["totals"][i] == round(sum(s["totals"][i] for s in everyone["series"][2:]), 2)
+
+
+def test_a_shop_in_two_categories_says_so(many_shops):
+    """A supermarket that sells fuel gets the category most of its rows carry, and names the other."""
+    out = series.spending(period="fortnight", by="merchant", top=0)
+    shop = next(s for s in out["series"] if s["merchant"] == "SUPERMARKET")
+
+    assert shop["category"] == "groceries"
+    assert shop["categories"] == ["groceries", "fuel"]
+    assert shop["total"] == 200.0
+
+
+def test_an_unknown_key_is_refused(many_shops):
+    with pytest.raises(ValueError, match="by must be one of"):
+        series.spending(by="counterparty")
+    with pytest.raises(ValueError, match="top must be"):
+        series.spending(by="merchant", top=-1)
