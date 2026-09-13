@@ -151,12 +151,13 @@ def test_the_lens_reads_the_live_api_and_emits_the_contract(readings):
     } <= set(doc)
     assert doc["window"]["period"] == "fortnight"
     assert doc["window"]["complete_periods"] >= 1, "the synthetic sample should span fortnights"
-    assert [r["cure"] for r in doc["readings"]] == [1, 2]
+    assert [r["cure"] for r in doc["readings"]] == [1, 2, 3, 4, 5, 6, 7]
     for reading in doc["readings"]:
         assert reading["available"] is True
         for name, fig in reading["figures"].items():
             assert fig["unit"] and fig["source"], f"{name} is a bare number"
-        assert reading["series"]["periods"], "a reading with no periods drew nothing"
+        if "series" in reading:
+            assert reading["series"]["periods"], "a reading with no periods drew nothing"
     # The merchant read path the lens exists to use: a table per purpose,
     # every row either a named shop or the fold that keeps the sum true.
     two = doc["readings"][1]
@@ -182,7 +183,7 @@ def test_the_tab_renders_a_lens_it_has_never_heard_of(dashboard: Page, readings,
     expect(pick.locator("option")).to_have_count(2)
     # First alphabetically is the default when nothing is remembered.
     expect(panel.locator(".lens-head h2")).to_have_text(readings["babylon"]["title"])
-    expect(panel.locator(".reading")).to_have_count(2)
+    expect(panel.locator(".reading")).to_have_count(7)
 
     pick.select_option("example")
     expect(panel.locator(".lens-head h2")).to_have_text("An example lens")

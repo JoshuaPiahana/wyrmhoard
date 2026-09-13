@@ -31,10 +31,13 @@ numbers, and it is served to the dashboard by nginx as a plain directory -
 the API has no part in it, because a lens holds an opinion and the core
 does not.
 
-Two of the seven cures are computed today (keep a tenth; control
-expenditure, including which shops each purpose went to). The other five
-are written in `LENS.md` and follow once the shape of a reading has been
-lived with.
+All seven cures are computed: keep a tenth; control expenditure, down to
+which shops each purpose went to; what the pots hold and earn; what is owed
+beyond the roof; the roof itself, interest against principal; what provides
+for the future; and what was earned, this window against the last. Three
+of them read what the household holds rather than what moved, so they are
+only as complete as the accounts imported and the home recorded - the
+reading says so where it matters.
 
 It is arithmetic on a household's own records and one book's opinion about
 it. It is not financial advice, and it recommends no product.

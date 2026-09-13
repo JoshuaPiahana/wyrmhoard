@@ -37,3 +37,20 @@ purposes:
 
 # How many shops to name per purpose before folding the rest into one row.
 merchants_named: 8
+
+# Cure 3 reads what the kept coins earn. The household's own income
+# categories that are interest; if none of these exist in its rules, the lens
+# says interest cannot be told apart rather than reporting none.
+interest_categories: [interest, income_interest]
+
+# Cure 4 reads what left the purse for borrowing that bought nothing lasting.
+# `loan_interest` is deliberately absent: on this ledger it is the dwelling's
+# own interest line, and the dwelling has its own cure.
+credit_categories: [bnpl, bank_fees]
+
+# Cure 6 reads what protects the family. The household's own category for it.
+insurance_categories: [insurance]
+
+# Cure 5's option: what one extra payment per fortnight on the dwelling buys,
+# read from Wyrmhoard's own projection. The projection offers 25, 50, 100, 200.
+extra_per_fortnight: 50
