@@ -5,8 +5,8 @@
 # browser binaries for its own version, so bumping one without the other
 # fails inside Playwright's startup and reads like a broken test rather than a
 # mismatched pin. test_layering.py asserts the two agree.
-pytest==9.1.1
-pytest-playwright==0.9.0
-playwright==1.62.0
+pytest==9.2.0
+pytest-playwright==0.10.0
+playwright==1.64.1
 # consumers/babylon needs it; e2e/test_lens.py runs that lens in-process
 PyYAML==6.0.3
