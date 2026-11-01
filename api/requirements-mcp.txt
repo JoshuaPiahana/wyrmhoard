@@ -3,4 +3,4 @@
 # Kept separate because plenty of people will never use it, and because the
 # core must not depend on it. See requirements-web.txt for the FastAPI/starlette
 # constraint this version imposes.
-mcp==2.1.1
+mcp==2.3.0
